@@ -539,6 +539,10 @@
         <input type="date" id="packageHistoryTo">
         <button class="btn btn-ghost btn-full btn-sm" style="margin-top:10px;" onclick="loadPackageHistory()">Xem</button>
       </div>
+      <div class="row" style="gap:8px; margin-bottom:10px;">
+        <button type="button" class="btn btn-ghost btn-sm method-btn selected" id="packageFilterAllBtn" onclick="setPackageFilter('all')">Tất cả</button>
+        <button type="button" class="btn btn-ghost btn-sm method-btn" id="packageFilterPendingBtn" onclick="setPackageFilter('pending')">Chưa trả</button>
+      </div>
       <div id="packageHistoryResult"></div>
     </div>
 
@@ -695,6 +699,14 @@
           <div class="num" id="statRevenue">0đ</div>
           <div class="label">Doanh thu đã thu</div>
         </div>
+        <div class="stat-card">
+          <div class="num" id="statRevenueCash">0đ</div>
+          <div class="label">Doanh thu tiền mặt</div>
+        </div>
+        <div class="stat-card">
+          <div class="num" id="statRevenueTransfer">0đ</div>
+          <div class="label">Doanh thu chuyển khoản</div>
+        </div>
         <div class="stat-card" style="cursor:pointer;" onclick="goToExpenseList()">
           <div class="num" id="statExpense" style="color:var(--danger);">0đ</div>
           <div class="label">Chi phí →</div>
@@ -706,6 +718,10 @@
         <div class="stat-card" style="grid-column:1 / -1; cursor:pointer;" onclick="goToUnconfirmed()">
           <div class="num" id="statUnconfirmed" style="color:var(--pending);">0</div>
           <div class="label">Đã trả tiền nhưng Chủ chưa xác nhận →</div>
+        </div>
+        <div class="stat-card" style="grid-column:1 / -1; cursor:pointer;" onclick="goToPendingReturn()">
+          <div class="num" id="statPendingReturn" style="color:var(--pending);">0</div>
+          <div class="label">Đơn chưa trả →</div>
         </div>
       </div>
 
@@ -773,9 +789,9 @@
   </main>
 
   <nav class="tabbar">
-    <button class="tab-btn active" data-tab="chamcong" onclick="switchTab('chamcong')">
-      <svg viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="1.8"/><path d="M12 7v5l3.2 2" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
-      Chấm công
+    <button class="tab-btn" data-tab="baocao" onclick="switchTab('baocao')" style="display:none;">
+      <svg viewBox="0 0 24 24" fill="none"><path d="M5 19V10M12 19V5M19 19v-6" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+      Báo cáo
     </button>
     <button class="tab-btn" data-tab="donggoi" onclick="switchTab('donggoi')">
       <svg viewBox="0 0 24 24" fill="none"><path d="M3 7l9-4 9 4-9 4-9-4Z" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/><path d="M3 7v10l9 4 9-4V7M12 11v10" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/></svg>
@@ -789,9 +805,9 @@
       <svg viewBox="0 0 24 24" fill="none"><rect x="3" y="6" width="18" height="13" rx="2" stroke="currentColor" stroke-width="1.8"/><path d="M3 10h18M16 14h2" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
       Chi phí
     </button>
-    <button class="tab-btn" data-tab="baocao" onclick="switchTab('baocao')" style="display:none;">
-      <svg viewBox="0 0 24 24" fill="none"><path d="M5 19V10M12 19V5M19 19v-6" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
-      Báo cáo
+    <button class="tab-btn active" data-tab="chamcong" onclick="switchTab('chamcong')">
+      <svg viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="1.8"/><path d="M12 7v5l3.2 2" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
+      Chấm công
     </button>
     <button class="tab-btn" data-tab="luong" onclick="switchTab('luong')" style="display:none;">
       <svg viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="1.8"/><path d="M12 7v3M12 14v3M9.5 9.5c0-1 .9-1.8 2.5-1.8s2.5.7 2.5 1.6c0 2.2-5 1-5 3.2 0 .9 1 1.6 2.5 1.6s2.5-.8 2.5-1.8" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
@@ -865,6 +881,8 @@ async function doLogin(){
       loadAttendanceLog();
       loadPendingPackages();
     }
+    // Chủ vào thẳng tab Báo cáo; Nhân viên (không có tab Báo cáo) vẫn vào Chấm công như cũ.
+    switchTab(currentUser.role === 'Chu' ? 'baocao' : 'chamcong');
   } catch(err){
     errEl.textContent = 'Không kết nối được server (' + err.message + '). Kiểm tra WEBAPP_URL trong file Index có đúng với link Web App hiện tại (Deploy > Manage deployments) không.';
   }
@@ -1364,15 +1382,24 @@ function renderChamCongHistoryList(){
       : '<div class="empty-state">Không có dữ liệu chấm công.</div>';
     return;
   }
-  el.innerHTML = records.map(rec => `
+  el.innerHTML = records.map(rec => {
+    const photos = (rec.photo || '').split(' | ').filter(Boolean);
+    const inPhoto = photos[0] || '';
+    const outPhoto = photos.length > 1 ? photos[1] : '';
+    const photoLinks = [
+      inPhoto ? `<a href="${inPhoto}" target="_blank">Ảnh vào</a>` : '',
+      outPhoto ? `<a href="${outPhoto}" target="_blank">Ảnh ra</a>` : ''
+    ].filter(Boolean).join(' · ');
+    return `
     <div class="delivered-row">
       <div>
         <div class="who">${rec.employeeName}${rec.ca ? ' · '+rec.ca : ''}</div>
-        <div class="sub">${rec.date} · Vào: ${rec.checkIn || '—'} · Ra: ${rec.checkOut || '—'}${rec.totalHours ? ' · ' + rec.totalHours + 'h' : ''}</div>
+        <div class="sub">${rec.date} · Vào: ${rec.checkIn || '—'} · Ra: ${rec.checkOut || '—'}${rec.totalHours ? ' · ' + rec.totalHours + 'h' : ''}${photoLinks ? ' · '+photoLinks : ''}</div>
       </div>
       ${rec.lateMinutes > 0 ? `<span class="method-tag" style="background:#FDECE6;color:var(--danger);">Muộn ${rec.lateMinutes}p</span>` : ''}
     </div>
-  `).join('');
+  `;
+  }).join('');
 }
 
 // ---------- sắp xếp ca làm ----------
@@ -1635,13 +1662,28 @@ async function refreshDonHangTab(rangeOverride){
   }
 }
 
+let packageFilter = 'all'; // 'all' | 'pending'
+
+function setPackageFilter(f){
+  packageFilter = f;
+  document.getElementById('packageFilterAllBtn').classList.toggle('selected', f==='all');
+  document.getElementById('packageFilterPendingBtn').classList.toggle('selected', f==='pending');
+  renderPackageHistoryList();
+}
+
 function renderPackageHistoryList(){
   const el = document.getElementById('packageHistoryResult');
-  if(lastPackageRows.length === 0){
-    el.innerHTML = '<div class="empty-state">Không có đơn đóng gói nào trong khoảng ngày này.</div>';
+  // "Chưa trả" là tồn đọng thực tế, không giới hạn theo khoảng ngày lịch sử đang xem -> lấy từ danh sách
+  // pendingPackages (đã tải sẵn, dùng chung với bộ chọn khách hàng ở tab Trả đồ) thay vì lastPackageRows.
+  const rows = packageFilter === 'pending' ? pendingPackages : lastPackageRows;
+  const isOwner = currentUser && currentUser.role === 'Chu';
+  if(rows.length === 0){
+    el.innerHTML = packageFilter === 'pending'
+      ? '<div class="empty-state">Không có đơn nào chưa trả.</div>'
+      : '<div class="empty-state">Không có đơn đóng gói nào trong khoảng ngày này.</div>';
     return;
   }
-  el.innerHTML = lastPackageRows.map(p => `
+  el.innerHTML = rows.map(p => `
     <div class="delivered-row">
       <div>
         <div class="who">${p.customer}</div>
@@ -1649,7 +1691,7 @@ function renderPackageHistoryList(){
       </div>
       <div style="display:flex;flex-direction:column;align-items:flex-end;gap:6px;">
         <span class="method-tag" style="${p.delivered ? 'background:#E4F3EC;color:var(--brand-dark);' : ''}">${p.delivered ? 'Đã trả đồ' : 'Chưa trả đồ'}</span>
-        ${lastPackageIsOwner ? `<div style="display:flex;gap:6px;">
+        ${isOwner ? `<div style="display:flex;gap:6px;">
           <button class="confirm-btn no" onclick="editPackage('${p.packageId}')">Sửa</button>
           <button class="confirm-btn no" style="background:#FDECE6;color:var(--danger);" onclick="deletePackage('${p.packageId}')">Xoá</button>
         </div>` : ''}
@@ -1861,7 +1903,7 @@ function renderDeliveredList(){
     <div class="delivered-row">
       <div>
         <div class="who">${o.customer}</div>
-        <div class="sub">${o.date}${o.time ? ' '+o.time : ''} · ${o.amount.toLocaleString('vi-VN')}đ${o.employeeName ? ` · NV: ${o.employeeName}` : ''}</div>
+        <div class="sub">${o.date}${o.time ? ' '+o.time : ''} · ${o.amount.toLocaleString('vi-VN')}đ${o.billUrl ? ` · <a href="${o.billUrl}" target="_blank">Xem bill</a>` : ''}${o.employeeName ? ` · NV: ${o.employeeName}` : ''}</div>
       </div>
       <div style="display:flex; flex-direction:column; align-items:flex-end; gap:6px;">
         <div style="display:flex; align-items:center; gap:8px;">
@@ -1900,7 +1942,7 @@ function loadReturnNoticesForDate(){
 let reportCurrentRange = null;
 async function renderReport(rangeOverride){
   reportCurrentRange = rangeOverride || null;
-  const statEls = ['statLate','statOrders','statRevenue','statExpense','statProfit','statUnconfirmed'].map(id=>document.getElementById(id));
+  const statEls = ['statLate','statOrders','statRevenue','statRevenueCash','statRevenueTransfer','statExpense','statProfit','statUnconfirmed','statPendingReturn'].map(id=>document.getElementById(id));
   statEls.forEach(el=>el.textContent = '…');
   try{
     const params = rangeOverride ? { from: rangeOverride.from, to: rangeOverride.to } : {};
@@ -1911,12 +1953,15 @@ async function renderReport(rangeOverride){
     document.getElementById('statLate').textContent = r.lateCount || 0;
     document.getElementById('statOrders').textContent = r.orderCount || 0;
     document.getElementById('statRevenue').textContent = (r.revenue || 0).toLocaleString('vi-VN')+'đ';
+    document.getElementById('statRevenueCash').textContent = (r.revenueCash || 0).toLocaleString('vi-VN')+'đ';
+    document.getElementById('statRevenueTransfer').textContent = (r.revenueTransfer || 0).toLocaleString('vi-VN')+'đ';
     document.getElementById('statExpense').textContent = (r.totalExpense || 0).toLocaleString('vi-VN')+'đ';
     const profitEl = document.getElementById('statProfit');
     const profit = r.profit || 0;
     profitEl.textContent = profit.toLocaleString('vi-VN')+'đ';
     profitEl.style.color = profit >= 0 ? 'var(--brand-dark)' : 'var(--danger)';
     document.getElementById('statUnconfirmed').textContent = r.unconfirmedCount || 0;
+    document.getElementById('statPendingReturn').textContent = r.pendingReturnCount || 0;
   } catch(err){
     statEls.forEach(el=>el.textContent = '—');
   }
@@ -1959,6 +2004,14 @@ function loadReportForDate(){
   const toIso = document.getElementById('reportTo').value;
   if(!fromIso || !toIso){ alert('Vui lòng chọn khoảng ngày.'); return; }
   renderReport({ from: toVNDate(fromIso), to: toVNDate(toIso) });
+}
+
+// Bấm vào thẻ "Đơn chưa trả" ở Báo cáo -> nhảy sang tab Đóng gói, tự lọc "Chưa trả".
+// Đơn chưa trả là tồn đọng thực tế (không phụ thuộc khoảng ngày báo cáo đang xem), nên dùng luôn
+// danh sách pendingPackages (đã tải sẵn khi đăng nhập / thao tác đóng gói) thay vì gọi lại theo ngày.
+function goToPendingReturn(){
+  switchTab('donggoi');
+  loadPendingPackages().then(() => setPackageFilter('pending'));
 }
 
 // Bấm vào thẻ "Chi phí" ở Báo cáo -> nhảy sang tab Chi phí, tự lọc đúng khoảng ngày đang xem (tất cả danh mục).
