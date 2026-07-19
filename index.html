@@ -8,7 +8,7 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Giặt Là Manor">
 <meta name="theme-color" content="#0F6E5C">
-<title>Giặt Là Ops — Demo</title>
+<title>Giặt Là Ops — Firebase</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
 <style>
@@ -403,6 +403,36 @@
   }
   .pay-modal h3{margin:0 0 14px; font-size:15px;}
   .method-btn.selected{background:var(--brand); color:#fff; border-color:var(--brand);}
+
+  /* Lịch chọn ngày tự viết (thay input type=date) — luôn hiển thị dd/mm/yyyy. */
+  input.date-input-vn{cursor:pointer; background-image:none;}
+  .vn-cal-popup{
+    position:fixed; z-index:200; width:280px;
+    background:#fff; border:1px solid var(--border); border-radius:16px;
+    box-shadow:0 12px 32px rgba(15,35,29,0.22); padding:12px;
+  }
+  .vn-cal-head{display:flex; align-items:center; justify-content:space-between; margin-bottom:8px;}
+  .vn-cal-title{font-weight:800; font-size:13.5px; color:var(--brand-dark); text-transform:capitalize;}
+  .vn-cal-nav{
+    border:1.5px solid var(--border); background:#F1F5F4; color:var(--ink);
+    border-radius:10px; width:30px; height:30px; font-size:14px; font-weight:700; cursor:pointer;
+  }
+  .vn-cal-nav:hover{background:#E4F3EC; border-color:var(--brand);}
+  .vn-cal-dow{display:grid; grid-template-columns:repeat(7,1fr); text-align:center; margin-bottom:4px;}
+  .vn-cal-dow span{font-size:10.5px; font-weight:700; color:var(--ink-soft); text-transform:uppercase;}
+  .vn-cal-grid{display:grid; grid-template-columns:repeat(7,1fr); gap:2px;}
+  .vn-cal-day{
+    aspect-ratio:1; display:flex; align-items:center; justify-content:center;
+    border-radius:10px; font-size:12.5px; font-weight:600; color:var(--ink); cursor:pointer; border:none; background:none;
+  }
+  .vn-cal-day:hover{background:#F1F5F4;}
+  .vn-cal-day.outside{color:var(--border);}
+  .vn-cal-day.today{color:var(--brand-dark); font-weight:800; box-shadow:inset 0 0 0 1.5px var(--brand);}
+  .vn-cal-day.selected{background:var(--brand); color:#fff;}
+  .vn-cal-today{
+    width:100%; margin-top:8px; padding:8px; border:none; border-radius:10px;
+    background:#F1F5F4; color:var(--brand-dark); font-weight:700; font-size:12px; cursor:pointer;
+  }
 </style>
 </head>
 <body>
@@ -422,6 +452,18 @@
 
 <div id="busyToast" style="display:none;position:fixed;top:12px;left:50%;transform:translateX(-50%);background:var(--brand);color:#fff;padding:8px 16px;border-radius:999px;font-size:13px;font-weight:600;z-index:9999;box-shadow:0 4px 14px rgba(0,0,0,.18);">Đang xử lý...</div>
 
+<!-- Lịch chọn ngày tự viết — luôn hiển thị dd/mm/yyyy, không phụ thuộc ngôn ngữ trình duyệt/hệ điều hành. -->
+<div id="vnCalPopup" class="vn-cal-popup" style="display:none;">
+  <div class="vn-cal-head">
+    <button type="button" class="vn-cal-nav" onclick="vnCalNav_(-1)">←</button>
+    <div class="vn-cal-title" id="vnCalTitle">—</div>
+    <button type="button" class="vn-cal-nav" onclick="vnCalNav_(1)">→</button>
+  </div>
+  <div class="vn-cal-dow" id="vnCalDow"></div>
+  <div class="vn-cal-grid" id="vnCalGrid"></div>
+  <button type="button" class="vn-cal-today" onclick="vnCalToday_()">Hôm nay</button>
+</div>
+
 <div class="app">
 
   <header>
@@ -431,7 +473,7 @@
       </div>
       <div class="brand-text">
         <div class="name">Giặt Là Manor</div>
-        <div class="sub">🔥 Bản demo Firebase — so tốc độ</div>
+        <div class="sub">🔥 Bản đầy đủ — Firebase (chạy song song thử nghiệm)</div>
       </div>
     </div>
     <div class="header-right">
@@ -492,14 +534,15 @@
         <h2 class="section-title" id="chamCongHistoryTitle">Lịch sử chấm công</h2>
         <div class="card">
           <label class="field-label">Từ ngày</label>
-          <input type="date" id="chamCongHistoryFrom">
+          <input type="text" id="chamCongHistoryFrom" class="date-input-vn" readonly placeholder="dd/mm/yyyy">
           <label class="field-label" style="margin-top:10px;">Đến ngày</label>
-          <input type="date" id="chamCongHistoryTo">
+          <input type="text" id="chamCongHistoryTo" class="date-input-vn" readonly placeholder="dd/mm/yyyy">
           <div class="row" style="gap:8px;margin-top:10px;">
             <button type="button" class="btn btn-ghost btn-sm method-btn selected" id="chamCongFilterAllBtn" onclick="setChamCongFilter('all')">Tất cả</button>
             <button type="button" class="btn btn-ghost btn-sm method-btn" id="chamCongFilterLateBtn" onclick="setChamCongFilter('late')">Đi muộn</button>
           </div>
           <button class="btn btn-ghost btn-full btn-sm" style="margin-top:10px;" onclick="loadCheckInHistory()">Xem</button>
+          <button class="btn btn-ghost btn-full btn-sm" style="margin-top:8px;" id="chamCongExportBtn" onclick="exportChamCongCSV()">⬇️ Xuất file (Excel/CSV)</button>
           <div id="lateSummaryWrap" style="margin-top:10px;"></div>
           <div id="chamCongHistoryResult" style="margin-top:10px;"></div>
         </div>
@@ -516,6 +559,14 @@
         <label class="field-label" style="margin-top:12px;">Số tiền (VNĐ)</label>
         <input type="text" inputmode="numeric" id="packageAmount" placeholder="VD: 150.000">
 
+        <label class="field-label" style="margin-top:12px;">Ảnh bill</label>
+        <button type="button" class="btn btn-ghost btn-full btn-sm" style="margin-top:4px;" onclick="triggerBillPhoto()">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none"><path d="M4 8h3l1.5-2.5h7L17 8h3v11H4V8Z" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/><circle cx="12" cy="13.5" r="3" stroke="currentColor" stroke-width="1.8"/></svg>
+          Chụp ảnh bill
+        </button>
+        <input type="file" id="billPhotoInput" accept="image/*" capture="environment">
+        <div id="billPreviewWrap"></div>
+
         <div class="row" style="margin-top:14px; gap:8px;">
           <button class="btn btn-in btn-full" id="donggoiSaveBtn" onclick="sendPackage()">Lưu đóng gói</button>
           <button class="btn btn-ghost btn-full" id="donggoiCancelBtn" style="display:none;" onclick="cancelPackageEdit()">Huỷ</button>
@@ -525,10 +576,14 @@
       <h2 class="section-title">Lịch sử đóng gói</h2>
       <div class="card">
         <label class="field-label">Từ ngày</label>
-        <input type="date" id="packageHistoryFrom">
+        <input type="text" id="packageHistoryFrom" class="date-input-vn" readonly placeholder="dd/mm/yyyy">
         <label class="field-label" style="margin-top:10px;">Đến ngày</label>
-        <input type="date" id="packageHistoryTo">
+        <input type="text" id="packageHistoryTo" class="date-input-vn" readonly placeholder="dd/mm/yyyy">
         <button class="btn btn-ghost btn-full btn-sm" style="margin-top:10px;" onclick="loadPackageHistory()">Xem</button>
+      </div>
+      <div class="row" style="gap:8px; margin-bottom:10px;">
+        <button type="button" class="btn btn-ghost btn-sm method-btn selected" id="packageFilterAllBtn" onclick="setPackageFilter('all')">Tất cả</button>
+        <button type="button" class="btn btn-ghost btn-sm method-btn" id="packageFilterPendingBtn" onclick="setPackageFilter('pending')">Chưa trả</button>
       </div>
       <div id="packageHistoryResult"></div>
     </div>
@@ -566,13 +621,11 @@
           <button type="button" class="btn btn-ghost btn-full method-btn" id="methodTransferBtn" onclick="selectMethod('Chuyển khoản')">🏦 Chuyển khoản</button>
         </div>
 
-        <label class="field-label" style="margin-top:12px;">Ảnh bill</label>
-        <button type="button" class="btn btn-ghost btn-full btn-sm" style="margin-top:4px;" onclick="triggerBillPhoto()">
-          <svg width="15" height="15" viewBox="0 0 24 24" fill="none"><path d="M4 8h3l1.5-2.5h7L17 8h3v11H4V8Z" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/><circle cx="12" cy="13.5" r="3" stroke="currentColor" stroke-width="1.8"/></svg>
-          Chụp ảnh bill
-        </button>
-        <input type="file" id="billPhotoInput" accept="image/*" capture="environment">
-        <div id="billPreviewWrap"></div>
+        <label class="field-label" style="margin-top:12px;">Hình thức trả đồ</label>
+        <div class="row" style="gap:8px;">
+          <button type="button" class="btn btn-ghost btn-full method-btn" id="deliveryMethodShipBtn" onclick="selectDeliveryMethod('Giao đồ')">🚚 Giao đồ</button>
+          <button type="button" class="btn btn-ghost btn-full method-btn" id="deliveryMethodShopBtn" onclick="selectDeliveryMethod('Tại tiệm')">🏬 Tại tiệm</button>
+        </div>
 
         <div class="row" style="margin-top:14px; gap:8px;">
           <button class="btn btn-in btn-full" id="donhangSaveBtn" onclick="sendReturnNotice()">Gửi thông báo trả đồ</button>
@@ -584,9 +637,9 @@
         <h2 class="section-title">Xem lại theo ngày</h2>
         <div class="card">
           <label class="field-label">Từ ngày</label>
-          <input type="date" id="traDoHistoryFrom">
+          <input type="text" id="traDoHistoryFrom" class="date-input-vn" readonly placeholder="dd/mm/yyyy">
           <label class="field-label" style="margin-top:10px;">Đến ngày</label>
-          <input type="date" id="traDoHistoryTo">
+          <input type="text" id="traDoHistoryTo" class="date-input-vn" readonly placeholder="dd/mm/yyyy">
           <div class="row" style="margin-top:10px; gap:8px;">
             <button class="btn btn-ghost btn-full btn-sm" onclick="loadReturnNoticesForDate()">Xem khoảng ngày này</button>
             <button class="btn btn-ghost btn-full btn-sm" onclick="renderDeliveredOrders()">Về hôm nay</button>
@@ -597,7 +650,7 @@
       <h2 class="section-title" id="deliveredListTitle">Đã trả đồ hôm nay</h2>
       <div class="row" style="gap:8px; margin-bottom:10px;">
         <button type="button" class="btn btn-ghost btn-sm method-btn selected" id="filterAllBtn" onclick="setDeliveredFilter('all')">Tất cả</button>
-        <button type="button" class="btn btn-ghost btn-sm method-btn" id="filterUnconfirmedBtn" onclick="setDeliveredFilter('unconfirmed')">Chưa xác nhận</button>
+        <button type="button" class="btn btn-ghost btn-sm method-btn" id="filterUnconfirmedBtn" onclick="setDeliveredFilter('unconfirmed')">Chưa thanh toán</button>
       </div>
       <div id="deliveredList"></div>
     </div>
@@ -607,7 +660,7 @@
       <h2 class="section-title" id="expenseFormTitle">Ghi chi phí mới</h2>
       <div class="card">
         <label class="field-label">Ngày</label>
-        <input type="date" id="expenseDate">
+        <input type="text" id="expenseDate" class="date-input-vn" readonly placeholder="dd/mm/yyyy">
 
         <label class="field-label" style="margin-top:12px;">Loại chi phí</label>
         <select id="expenseCategory">
@@ -637,9 +690,9 @@
       <h2 class="section-title">Lịch sử chi phí</h2>
       <div class="card">
         <label class="field-label">Từ ngày</label>
-        <input type="date" id="expenseHistoryFrom">
+        <input type="text" id="expenseHistoryFrom" class="date-input-vn" readonly placeholder="dd/mm/yyyy">
         <label class="field-label" style="margin-top:10px;">Đến ngày</label>
-        <input type="date" id="expenseHistoryTo">
+        <input type="text" id="expenseHistoryTo" class="date-input-vn" readonly placeholder="dd/mm/yyyy">
         <label class="field-label" style="margin-top:10px;">Loại chi phí</label>
         <select id="expenseCategoryFilter">
           <option value="all">Tất cả danh mục</option>
@@ -665,9 +718,9 @@
       <h2 class="section-title">Xem báo cáo theo khoảng ngày</h2>
       <div class="card">
         <label class="field-label">Từ ngày</label>
-        <input type="date" id="reportFrom">
+        <input type="text" id="reportFrom" class="date-input-vn" readonly placeholder="dd/mm/yyyy">
         <label class="field-label" style="margin-top:10px;">Đến ngày</label>
-        <input type="date" id="reportTo">
+        <input type="text" id="reportTo" class="date-input-vn" readonly placeholder="dd/mm/yyyy">
         <div class="row" style="margin-top:10px; gap:8px;">
           <button class="btn btn-ghost btn-full btn-sm" onclick="loadReportForDate()">Xem khoảng ngày này</button>
           <button class="btn btn-ghost btn-full btn-sm" onclick="renderReport()">Về hôm nay</button>
@@ -688,6 +741,14 @@
           <div class="num" id="statRevenue">0đ</div>
           <div class="label">Doanh thu đã thu</div>
         </div>
+        <div class="stat-card">
+          <div class="num" id="statRevenueCash">0đ</div>
+          <div class="label">Doanh thu tiền mặt</div>
+        </div>
+        <div class="stat-card">
+          <div class="num" id="statRevenueTransfer">0đ</div>
+          <div class="label">Doanh thu chuyển khoản</div>
+        </div>
         <div class="stat-card" style="cursor:pointer;" onclick="goToExpenseList()">
           <div class="num" id="statExpense" style="color:var(--danger);">0đ</div>
           <div class="label">Chi phí →</div>
@@ -700,23 +761,85 @@
           <div class="num" id="statUnconfirmed" style="color:var(--pending);">0</div>
           <div class="label">Đã trả tiền nhưng Chủ chưa xác nhận →</div>
         </div>
+        <div class="stat-card" style="grid-column:1 / -1; cursor:pointer;" onclick="goToPendingReturn()">
+          <div class="num" id="statPendingReturn" style="color:var(--pending);">0</div>
+          <div class="label">Đơn chưa trả →</div>
+        </div>
       </div>
 
-      <h2 class="section-title">Tính lương tháng</h2>
+    </div>
+
+    <!-- TAB: LƯƠNG (chỉ Chủ) -->
+    <div class="view" id="view-luong">
+      <h2 class="section-title">Tính lương nhân viên</h2>
       <div class="card">
-        <label class="field-label">Chọn tháng</label>
-        <input type="month" id="payrollMonth">
-        <button class="btn btn-in btn-full" style="margin-top:10px;" onclick="runPayroll()">Tính lương tháng này</button>
-        <div id="payrollResult" style="margin-top:10px;font-size:13px;color:var(--ink-soft);"></div>
+        <label class="field-label">Nhân viên</label>
+        <select id="payrollEmployeeSelect"></select>
+
+        <label class="field-label" style="margin-top:10px;">Từ ngày</label>
+        <input type="text" id="payrollFrom" class="date-input-vn" readonly placeholder="dd/mm/yyyy">
+        <label class="field-label" style="margin-top:10px;">Đến ngày</label>
+        <input type="text" id="payrollTo" class="date-input-vn" readonly placeholder="dd/mm/yyyy">
+
+        <button class="btn btn-ghost btn-full btn-sm" style="margin-top:10px;" onclick="loadPayrollDetail()">Xem chấm công &amp; tính lương</button>
+        <button class="btn btn-ghost btn-full btn-sm" style="margin-top:8px;" onclick="loadPayrollHistory()">📜 Xem phiếu lương đã lưu</button>
+        <div id="payrollDetailResult" style="margin-top:10px;font-size:13px;color:var(--ink-soft);"></div>
+      </div>
+
+      <div class="card" id="payrollHistoryCard" style="display:none;">
+        <div style="font-weight:800;font-size:11.5px;color:var(--brand-dark);text-transform:uppercase;letter-spacing:.04em;margin-bottom:6px;">Lịch sử phiếu lương đã lưu</div>
+        <div id="payrollHistoryWrap"></div>
+      </div>
+
+      <div class="card" id="payrollAttendanceCard" style="display:none;">
+        <div style="font-weight:800;font-size:11.5px;color:var(--brand-dark);text-transform:uppercase;letter-spacing:.04em;margin-bottom:6px;">Nhật ký chấm công</div>
+        <div id="payrollAttendanceWrap"></div>
+      </div>
+
+      <div class="card" id="payrollCalcCard" style="display:none;">
+        <div class="row" style="justify-content:space-between;">
+          <span class="field-label" style="margin:0;">Lương cơ bản</span>
+          <span class="mono" id="payrollBasePay" style="font-weight:800;font-size:15px;">0đ</span>
+        </div>
+
+        <div style="font-weight:800;font-size:11.5px;color:var(--brand-dark);text-transform:uppercase;letter-spacing:.04em;margin:14px 0 6px;">Khoản cộng (để trống nếu không có)</div>
+        <label class="field-label">Thưởng hiệu suất</label>
+        <input type="text" inputmode="numeric" id="payrollBonusPerformance" placeholder="0" oninput="recalcPayrollTotal()">
+        <label class="field-label" style="margin-top:8px;">Làm thêm giờ</label>
+        <input type="text" inputmode="numeric" id="payrollOvertimePay" placeholder="0" oninput="recalcPayrollTotal()">
+        <label class="field-label" style="margin-top:8px;">Hỗ trợ xăng ship đơn</label>
+        <input type="text" inputmode="numeric" id="payrollGasAllowance" placeholder="0" oninput="recalcPayrollTotal()">
+        <label class="field-label" style="margin-top:8px;">Phụ cấp ăn trưa</label>
+        <input type="text" inputmode="numeric" id="payrollLunchAllowance" placeholder="0" oninput="recalcPayrollTotal()">
+
+        <div style="font-weight:800;font-size:11.5px;color:var(--danger);text-transform:uppercase;letter-spacing:.04em;margin:14px 0 6px;">Khoản trừ (để trống nếu không có)</div>
+        <label class="field-label">Nghỉ không lương</label>
+        <input type="text" inputmode="numeric" id="payrollUnpaidLeave" placeholder="0" oninput="recalcPayrollTotal()">
+        <label class="field-label" style="margin-top:8px;">Tạm ứng</label>
+        <input type="text" inputmode="numeric" id="payrollAdvance" placeholder="0" oninput="recalcPayrollTotal()">
+        <label class="field-label" style="margin-top:8px;">Đi làm muộn</label>
+        <input type="text" inputmode="numeric" id="payrollLatePenalty" placeholder="0" oninput="recalcPayrollTotal()">
+
+        <div class="row" style="justify-content:space-between;margin-top:16px;border-top:2px solid var(--brand);padding-top:12px;">
+          <span style="font-weight:800;">Tổng thực nhận</span>
+          <span class="mono" id="payrollTotalPay" style="font-weight:800;font-size:18px;color:var(--brand-dark);">0đ</span>
+        </div>
+
+        <div class="row" style="gap:8px;margin-top:14px;">
+          <button class="btn btn-ghost btn-full btn-sm" onclick="savePayrollDetailed()">Lưu phiếu lương</button>
+          <button class="btn btn-ghost btn-full btn-sm" onclick="exportPayrollCSV()">⬇️ Xuất file</button>
+        </div>
+        <button class="btn btn-in btn-full" style="margin-top:8px;" onclick="sendPayrollEmailNow()">✉️ Gửi email cho nhân viên</button>
+        <div id="payrollSendResult" style="margin-top:10px;font-size:13px;color:var(--ink-soft);"></div>
       </div>
     </div>
 
   </main>
 
   <nav class="tabbar">
-    <button class="tab-btn active" data-tab="chamcong" onclick="switchTab('chamcong')">
-      <svg viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="1.8"/><path d="M12 7v5l3.2 2" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
-      Chấm công
+    <button class="tab-btn" data-tab="baocao" onclick="switchTab('baocao')" style="display:none;">
+      <svg viewBox="0 0 24 24" fill="none"><path d="M5 19V10M12 19V5M19 19v-6" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+      Báo cáo
     </button>
     <button class="tab-btn" data-tab="donggoi" onclick="switchTab('donggoi')">
       <svg viewBox="0 0 24 24" fill="none"><path d="M3 7l9-4 9 4-9 4-9-4Z" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/><path d="M3 7v10l9 4 9-4V7M12 11v10" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/></svg>
@@ -730,9 +853,13 @@
       <svg viewBox="0 0 24 24" fill="none"><rect x="3" y="6" width="18" height="13" rx="2" stroke="currentColor" stroke-width="1.8"/><path d="M3 10h18M16 14h2" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
       Chi phí
     </button>
-    <button class="tab-btn" data-tab="baocao" onclick="switchTab('baocao')" style="display:none;">
-      <svg viewBox="0 0 24 24" fill="none"><path d="M5 19V10M12 19V5M19 19v-6" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
-      Báo cáo
+    <button class="tab-btn active" data-tab="chamcong" onclick="switchTab('chamcong')">
+      <svg viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="1.8"/><path d="M12 7v5l3.2 2" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
+      Chấm công
+    </button>
+    <button class="tab-btn" data-tab="luong" onclick="switchTab('luong')" style="display:none;">
+      <svg viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="1.8"/><path d="M12 7v3M12 14v3M9.5 9.5c0-1 .9-1.8 2.5-1.8s2.5.7 2.5 1.6c0 2.2-5 1-5 3.2 0 .9 1 1.6 2.5 1.6s2.5-.8 2.5-1.8" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
+      Lương
     </button>
   </nav>
 
@@ -740,9 +867,8 @@
 
 <script>
 // ====== CONFIG ======
-// ⬇️ SỬA dòng này thành URL Cloud Function của bạn sau khi deploy xong
-// (dạng https://REGION-PROJECTID.cloudfunctions.net/api), rồi mở lại file này.
-const WEBAPP_URL = 'https://api-153135351147.asia-southeast1.run.app';
+// Bản ĐẦY ĐỦ chạy trên Firebase Cloud Functions (region asia-southeast1) — sửa URL này sau khi deploy xong.
+const WEBAPP_URL = 'https://api-full-153135351147.asia-southeast1.run.app';
 
 // ---------- state ----------
 let currentUser = null; // {name, role, pin}
@@ -781,11 +907,13 @@ async function doLogin(){
     document.getElementById('whoAmI').style.display = 'flex';
     document.getElementById('whoName').textContent = currentUser.name;
     document.getElementById('whoRole').textContent = currentUser.role === 'Chu' ? 'Chủ' : 'Nhân viên';
-    // Bản demo Firebase (MVP) chưa làm Chi phí/Báo cáo — luôn ẩn 2 tab này bất kể vai trò gì.
-    document.querySelector('.tab-btn[data-tab="baocao"]').style.display = 'none';
-    document.querySelector('.tab-btn[data-tab="chiphi"]').style.display = 'none';
+    document.querySelector('.tab-btn[data-tab="baocao"]').style.display = currentUser.role === 'Chu' ? 'flex' : 'none';
+    document.querySelector('.tab-btn[data-tab="chiphi"]').style.display = currentUser.role === 'Chu' ? 'flex' : 'none';
+    document.querySelector('.tab-btn[data-tab="luong"]').style.display = currentUser.role === 'Chu' ? 'flex' : 'none';
     document.getElementById('chamCongHistoryTitle').textContent = currentUser.role === 'Chu' ? 'Lịch sử chấm công' : 'Lịch sử chấm công của bạn';
     document.getElementById('myStatusCard').style.display = currentUser.role === 'Chu' ? 'none' : 'block';
+    // Xuất file Excel/CSV chỉ dành cho tài khoản Chủ — nhân viên không cần tính năng này.
+    document.getElementById('chamCongExportBtn').style.display = currentUser.role === 'Chu' ? '' : 'none';
     // Gộp 3 lệnh (trạng thái/lịch sử chấm công hôm nay + lịch xếp ca tuần + đóng gói chờ trả đồ)
     // thành 1 lần gọi duy nhất thay vì bắn riêng từng lệnh — đỡ chậm hẳn lúc vừa đăng nhập.
     if(!shiftWeekStart) shiftWeekStart = mondayOf_(new Date());
@@ -803,6 +931,8 @@ async function doLogin(){
       loadAttendanceLog();
       loadPendingPackages();
     }
+    // Chủ vào thẳng tab Báo cáo; Nhân viên (không có tab Báo cáo) vẫn vào Chấm công như cũ.
+    switchTab(currentUser.role === 'Chu' ? 'baocao' : 'chamcong');
   } catch(err){
     errEl.textContent = 'Không kết nối được server (' + err.message + '). Kiểm tra WEBAPP_URL trong file Index có đúng với link Web App hiện tại (Deploy > Manage deployments) không.';
   }
@@ -847,11 +977,129 @@ function attachMoneyInput(id){
     el.value = digits ? formatVNMoney(digits) : '';
   });
 }
-['packageAmount','expenseAmount'].forEach(attachMoneyInput);
+['packageAmount','expenseAmount','payrollBonusPerformance','payrollOvertimePay','payrollGasAllowance','payrollLunchAllowance','payrollUnpaidLeave','payrollAdvance','payrollLatePenalty'].forEach(attachMoneyInput);
+
+// ---------- lịch chọn ngày tự viết (dd/mm/yyyy cố định, không phụ thuộc ngôn ngữ trình duyệt) ----------
+// Input vẫn giữ id cũ và ".value" vẫn trả về đúng chuỗi ISO "yyyy-MM-dd" như input type=date trước đây
+// (nhờ override riêng thuộc tính value trên từng phần tử) — nên toàn bộ code đọc/ghi .value ở nơi khác
+// trong file này không cần sửa gì thêm. Chỉ phần HIỂN THỊ (chữ trong ô) là do ta tự vẽ theo dd/mm/yyyy.
+const VN_MONTH_NAMES_ = ['Tháng 1','Tháng 2','Tháng 3','Tháng 4','Tháng 5','Tháng 6','Tháng 7','Tháng 8','Tháng 9','Tháng 10','Tháng 11','Tháng 12'];
+const VN_DOW_NAMES_ = ['CN','T2','T3','T4','T5','T6','T7'];
+const nativeInputValueDesc_ = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value');
+
+function isoToVNDisplay_(iso){
+  if(!iso) return '';
+  const [y,m,d] = iso.split('-');
+  return `${d}/${m}/${y}`;
+}
+function pad2_(n){ return String(n).padStart(2,'0'); }
+function dateToIso_(d){ return `${d.getFullYear()}-${pad2_(d.getMonth()+1)}-${pad2_(d.getDate())}`; }
+
+function makeVNDateInput_(id){
+  const el = document.getElementById(id);
+  if(!el || el.dataset.vnDateReady) return;
+  el.dataset.vnDateReady = '1';
+  el.readOnly = true;
+  el.classList.add('date-input-vn');
+  if(!el.placeholder) el.placeholder = 'dd/mm/yyyy';
+  let isoVal = '';
+  Object.defineProperty(el, 'value', {
+    configurable: true,
+    get(){ return isoVal; },
+    set(v){
+      isoVal = v || '';
+      nativeInputValueDesc_.set.call(el, isoToVNDisplay_(isoVal));
+    }
+  });
+  el.addEventListener('click', () => openVNCalendar_(el));
+}
+
+let vnCalActiveInput_ = null;
+let vnCalYear_ = 0, vnCalMonth_ = 0; // month: 0-11
+
+function openVNCalendar_(el){
+  vnCalActiveInput_ = el;
+  const base = el.value ? new Date(el.value + 'T00:00:00') : new Date();
+  vnCalYear_ = base.getFullYear();
+  vnCalMonth_ = base.getMonth();
+  renderVNCalendar_();
+  const popup = document.getElementById('vnCalPopup');
+  popup.style.display = 'block';
+  const rect = el.getBoundingClientRect();
+  const popupWidth = 280;
+  let left = rect.left;
+  if(left + popupWidth > window.innerWidth - 8) left = window.innerWidth - popupWidth - 8;
+  if(left < 8) left = 8;
+  let top = rect.bottom + 6;
+  if(top + 320 > window.innerHeight){ top = Math.max(8, rect.top - 326); }
+  popup.style.left = left + 'px';
+  popup.style.top = top + 'px';
+}
+function closeVNCalendar_(){
+  const popup = document.getElementById('vnCalPopup');
+  if(popup) popup.style.display = 'none';
+  vnCalActiveInput_ = null;
+}
+function vnCalNav_(delta){
+  vnCalMonth_ += delta;
+  if(vnCalMonth_ < 0){ vnCalMonth_ = 11; vnCalYear_--; }
+  if(vnCalMonth_ > 11){ vnCalMonth_ = 0; vnCalYear_++; }
+  renderVNCalendar_();
+}
+function vnCalToday_(){
+  if(!vnCalActiveInput_) return;
+  vnCalActiveInput_.value = dateToIso_(new Date());
+  closeVNCalendar_();
+}
+function vnCalPick_(iso){
+  if(!vnCalActiveInput_) return;
+  vnCalActiveInput_.value = iso;
+  closeVNCalendar_();
+}
+function renderVNCalendar_(){
+  document.getElementById('vnCalTitle').textContent = `${VN_MONTH_NAMES_[vnCalMonth_]}, ${vnCalYear_}`;
+  document.getElementById('vnCalDow').innerHTML = VN_DOW_NAMES_.map(n=>`<span>${n}</span>`).join('');
+
+  const todayIso = dateToIso_(new Date());
+  const selectedIso = vnCalActiveInput_ ? vnCalActiveInput_.value : '';
+  const firstOfMonth = new Date(vnCalYear_, vnCalMonth_, 1);
+  const startOffset = firstOfMonth.getDay(); // 0=CN
+  const daysInMonth = new Date(vnCalYear_, vnCalMonth_+1, 0).getDate();
+  const daysInPrevMonth = new Date(vnCalYear_, vnCalMonth_, 0).getDate();
+
+  const cells = [];
+  for(let i=startOffset-1;i>=0;i--){
+    const dayNum = daysInPrevMonth - i;
+    cells.push({ dayNum, outside:true, iso:null });
+  }
+  for(let d=1; d<=daysInMonth; d++){
+    cells.push({ dayNum:d, outside:false, iso:`${vnCalYear_}-${pad2_(vnCalMonth_+1)}-${pad2_(d)}` });
+  }
+  let nextDay = 1;
+  while(cells.length % 7 !== 0){
+    cells.push({ dayNum:nextDay++, outside:true, iso:null });
+  }
+
+  document.getElementById('vnCalGrid').innerHTML = cells.map(c=>{
+    if(c.outside) return `<button type="button" class="vn-cal-day outside" disabled>${c.dayNum}</button>`;
+    const cls = ['vn-cal-day'];
+    if(c.iso === todayIso) cls.push('today');
+    if(c.iso === selectedIso) cls.push('selected');
+    return `<button type="button" class="${cls.join(' ')}" onclick="vnCalPick_('${c.iso}')">${c.dayNum}</button>`;
+  }).join('');
+}
+document.addEventListener('click', (e)=>{
+  const popup = document.getElementById('vnCalPopup');
+  if(!popup || popup.style.display === 'none') return;
+  if(popup.contains(e.target) || e.target.classList.contains('date-input-vn')) return;
+  closeVNCalendar_();
+});
+
+['chamCongHistoryFrom','chamCongHistoryTo','traDoHistoryFrom','traDoHistoryTo','reportFrom','reportTo','expenseHistoryFrom','expenseHistoryTo','expenseDate','packageHistoryFrom','packageHistoryTo','payrollFrom','payrollTo'].forEach(makeVNDateInput_);
 
 (function initDateInputs(){
   const d = new Date();
-  const iso = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+  const iso = dateToIso_(d);
   ['chamCongHistoryFrom','chamCongHistoryTo','traDoHistoryFrom','traDoHistoryTo','reportFrom','reportTo','expenseHistoryFrom','expenseHistoryTo','expenseDate','packageHistoryFrom','packageHistoryTo'].forEach(id=>{
     const el = document.getElementById(id);
     if(el) el.value = iso;
@@ -859,38 +1107,253 @@ function attachMoneyInput(id){
 })();
 
 // ---------- tính lương ----------
-(function initPayrollMonth(){
-  const d = new Date();
-  const el = document.getElementById('payrollMonth');
-  if(el) el.value = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;
-})();
+// ---------- tab Lương (tính lương riêng từng nhân viên) ----------
+let payrollDetail = null; // dữ liệu lần "Xem chấm công & tính lương" gần nhất
 
-async function runPayroll(){
-  const val = document.getElementById('payrollMonth').value; // yyyy-MM
-  const resultEl = document.getElementById('payrollResult');
-  if(!val){ resultEl.textContent = 'Vui lòng chọn tháng.'; return; }
-  const [yyyy, mm] = val.split('-');
-  const monthStr = `${mm}/${yyyy}`;
-  resultEl.textContent = 'Đang tính lương...';
+async function initPayrollTab(){
+  const sel = document.getElementById('payrollEmployeeSelect');
+  if(!sel.dataset.loaded){
+    try{
+      const r = await apiCall('getEmployees', {});
+      const employees = r.employees || [];
+      sel.innerHTML = employees.map(e => `<option value="${e.employeeId}">${e.name} (${e.employeeType || 'Part time'})</option>`).join('')
+        || '<option value="">Chưa có nhân viên</option>';
+      sel.dataset.loaded = '1';
+    } catch(err){
+      sel.innerHTML = '<option value="">Không tải được danh sách</option>';
+    }
+  }
+  if(!document.getElementById('payrollFrom').value){
+    const today = new Date();
+    const first = new Date(today.getFullYear(), today.getMonth(), 1);
+    document.getElementById('payrollFrom').value = first.toISOString().slice(0,10);
+    document.getElementById('payrollTo').value = today.toISOString().slice(0,10);
+  }
+}
+
+async function loadPayrollDetail(){
+  const employeeId = document.getElementById('payrollEmployeeSelect').value;
+  const fromIso = document.getElementById('payrollFrom').value;
+  const toIso = document.getElementById('payrollTo').value;
+  const resultEl = document.getElementById('payrollDetailResult');
+  if(!employeeId){ resultEl.textContent = 'Vui lòng chọn nhân viên.'; return; }
+  if(!fromIso || !toIso){ resultEl.textContent = 'Vui lòng chọn khoảng ngày.'; return; }
+  resultEl.textContent = 'Đang tải...';
+  document.getElementById('payrollHistoryCard').style.display = 'none';
   try{
-    const r = await apiCall('generatePayroll', { month: monthStr });
-    resultEl.textContent = r.rows > 0
-      ? `Đã tính lương tháng ${monthStr}: ${r.rows} nhân viên, tổng quỹ lương ${r.totalFund.toLocaleString('vi-VN')}đ. Xem chi tiết ở sheet "Payroll" trong file Quản lý nhân sự.`
-      : `Không có dữ liệu chấm công trong tháng ${monthStr}.`;
+    const r = await apiCall('getPayrollDetail', { employeeId, from: toVNDate(fromIso), to: toVNDate(toIso) });
+    payrollDetail = r;
+    resultEl.textContent = `${r.employeeName} — ${r.employeeType} — ${r.records.length} lượt chấm công trong khoảng ngày này.${r.email ? '' : ' ⚠️ Nhân viên chưa có email trong hồ sơ, chưa gửi mail được.'}`;
+    renderPayrollAttendance();
+    // reset các ô cộng/trừ mỗi lần tải lại
+    ['payrollBonusPerformance','payrollOvertimePay','payrollGasAllowance','payrollLunchAllowance','payrollUnpaidLeave','payrollAdvance','payrollLatePenalty'].forEach(id => document.getElementById(id).value = '');
+    document.getElementById('payrollBasePay').textContent = Number(r.basePay).toLocaleString('vi-VN') + 'đ';
+    document.getElementById('payrollAttendanceCard').style.display = 'block';
+    document.getElementById('payrollCalcCard').style.display = 'block';
+    document.getElementById('payrollSendResult').textContent = '';
+    recalcPayrollTotal();
+  } catch(err){
+    resultEl.textContent = 'Lỗi: ' + err.message;
+    document.getElementById('payrollAttendanceCard').style.display = 'none';
+    document.getElementById('payrollCalcCard').style.display = 'none';
+  }
+}
+
+function renderPayrollAttendance(){
+  const wrap = document.getElementById('payrollAttendanceWrap');
+  if(!payrollDetail || payrollDetail.records.length === 0){
+    wrap.innerHTML = '<div class="empty-state">Không có dữ liệu chấm công trong khoảng ngày này.</div>';
+    return;
+  }
+  wrap.innerHTML = payrollDetail.records.map(r => `
+    <div class="delivered-row">
+      <div class="who">${r.date}</div>
+      <div style="text-align:right;">
+        <div class="mono" style="font-size:12px;color:var(--ink-soft);">${r.checkIn||'-'} → ${r.checkOut||'-'}</div>
+        <div class="mono" style="font-weight:700;font-size:13px;">${r.totalHours||0}h</div>
+      </div>
+    </div>
+  `).join('') + `
+    <div class="delivered-row" style="border-top:2px solid var(--border);margin-top:4px;padding-top:10px;">
+      <div class="who" style="font-weight:800;">Tổng giờ công</div>
+      <div class="mono" style="font-weight:800;">${payrollDetail.totalHours}h</div>
+    </div>`;
+}
+
+// Các ô lương (thưởng/khấu trừ) giờ có dấu "." ngăn cách hàng nghìn giống ô Số tiền — bỏ hết ký tự
+// không phải số (kể cả dấu chấm) trước khi parse, tránh bị hiểu nhầm dấu chấm là số thập phân.
+function numVal_(id){ return Number(String(document.getElementById(id).value || '').replace(/\D/g,'')) || 0; }
+
+function recalcPayrollTotal(){
+  if(!payrollDetail) return;
+  const add = numVal_('payrollBonusPerformance') + numVal_('payrollOvertimePay') + numVal_('payrollGasAllowance') + numVal_('payrollLunchAllowance');
+  const sub = numVal_('payrollUnpaidLeave') + numVal_('payrollAdvance') + numVal_('payrollLatePenalty');
+  const total = (Number(payrollDetail.basePay) || 0) + add - sub;
+  document.getElementById('payrollTotalPay').textContent = total.toLocaleString('vi-VN') + 'đ';
+}
+
+function buildPayrollPayload_(){
+  const add = {
+    bonusPerformance: numVal_('payrollBonusPerformance'), overtimePay: numVal_('payrollOvertimePay'),
+    gasAllowance: numVal_('payrollGasAllowance'), lunchAllowance: numVal_('payrollLunchAllowance')
+  };
+  const sub = { unpaidLeave: numVal_('payrollUnpaidLeave'), advance: numVal_('payrollAdvance'), latePenalty: numVal_('payrollLatePenalty') };
+  const totalPay = (Number(payrollDetail.basePay)||0) + add.bonusPerformance + add.overtimePay + add.gasAllowance + add.lunchAllowance
+    - sub.unpaidLeave - sub.advance - sub.latePenalty;
+  return Object.assign({
+    employeeId: payrollDetail.employeeId, employeeName: payrollDetail.employeeName, employeeType: payrollDetail.employeeType,
+    from: payrollDetail.from, to: payrollDetail.to, totalHours: payrollDetail.totalHours, basePay: payrollDetail.basePay,
+    totalPay, records: payrollDetail.records
+  }, add, sub);
+}
+
+async function savePayrollDetailed(){
+  if(!payrollDetail){ alert('Vui lòng bấm "Xem chấm công & tính lương" trước.'); return; }
+  const resultEl = document.getElementById('payrollSendResult');
+  resultEl.textContent = 'Đang lưu...';
+  try{
+    await apiCall('savePayrollDetail', buildPayrollPayload_());
+    resultEl.textContent = 'Đã lưu phiếu lương.';
+    // Nếu bảng lịch sử đang mở cho đúng nhân viên này thì tải lại luôn cho thấy phiếu vừa lưu.
+    const card = document.getElementById('payrollHistoryCard');
+    if(card.style.display !== 'none') loadPayrollHistory();
   } catch(err){
     resultEl.textContent = 'Lỗi: ' + err.message;
   }
 }
 
+// ---------- Lịch sử phiếu lương đã lưu ----------
+async function loadPayrollHistory(){
+  const employeeId = document.getElementById('payrollEmployeeSelect').value;
+  if(!employeeId){ alert('Vui lòng chọn nhân viên.'); return; }
+  const card = document.getElementById('payrollHistoryCard');
+  const wrap = document.getElementById('payrollHistoryWrap');
+  card.style.display = 'block';
+  wrap.innerHTML = '<div class="empty-state">Đang tải...</div>';
+  try{
+    const r = await apiCall('getPayrollDetailHistory', { employeeId });
+    renderPayrollHistory(r.rows || []);
+  } catch(err){
+    wrap.innerHTML = '<div class="empty-state">Lỗi: ' + err.message + '</div>';
+  }
+}
+
+let payrollHistoryRows_ = [];
+function renderPayrollHistory(rows){
+  payrollHistoryRows_ = rows;
+  const wrap = document.getElementById('payrollHistoryWrap');
+  if(!rows.length){
+    wrap.innerHTML = '<div class="empty-state">Nhân viên này chưa có phiếu lương nào được lưu.</div>';
+    return;
+  }
+  const fmt = n => Number(n||0).toLocaleString('vi-VN') + 'đ';
+  wrap.innerHTML = rows.map((r,i) => `
+    <div class="delivered-row" style="flex-direction:column;align-items:stretch;cursor:pointer;" onclick="togglePayrollHistoryItem(${i})">
+      <div class="row" style="justify-content:space-between;">
+        <div>
+          <div class="who">Kỳ ${r.from} – ${r.to}</div>
+          <div class="sub">Lưu lúc: ${r.savedAt || '-'}</div>
+        </div>
+        <div class="mono" style="font-weight:800;">${fmt(r.totalPay)}</div>
+      </div>
+      <div id="payrollHistoryDetail${i}" style="display:none;margin-top:10px;padding-top:10px;border-top:1px solid var(--border);font-size:12.5px;line-height:1.7;">
+        <div>Tổng giờ công: <b>${r.totalHours}h</b> — Lương cơ bản: <b>${fmt(r.basePay)}</b></div>
+        ${r.bonusPerformance ? `<div>+ Thưởng hiệu suất: ${fmt(r.bonusPerformance)}</div>` : ''}
+        ${r.overtimePay ? `<div>+ Làm thêm giờ: ${fmt(r.overtimePay)}</div>` : ''}
+        ${r.gasAllowance ? `<div>+ Hỗ trợ xăng ship đơn: ${fmt(r.gasAllowance)}</div>` : ''}
+        ${r.lunchAllowance ? `<div>+ Phụ cấp ăn trưa: ${fmt(r.lunchAllowance)}</div>` : ''}
+        ${r.unpaidLeave ? `<div>− Nghỉ không lương: ${fmt(r.unpaidLeave)}</div>` : ''}
+        ${r.advance ? `<div>− Tạm ứng: ${fmt(r.advance)}</div>` : ''}
+        ${r.latePenalty ? `<div>− Đi làm muộn: ${fmt(r.latePenalty)}</div>` : ''}
+        <div style="font-weight:800;margin-top:4px;">Tổng thực nhận: ${fmt(r.totalPay)}</div>
+      </div>
+    </div>
+  `).join('');
+}
+
+function togglePayrollHistoryItem(i){
+  const el = document.getElementById('payrollHistoryDetail'+i);
+  if(el) el.style.display = el.style.display === 'none' ? 'block' : 'none';
+}
+
+async function sendPayrollEmailNow(){
+  if(!payrollDetail){ alert('Vui lòng bấm "Xem chấm công & tính lương" trước.'); return; }
+  if(!payrollDetail.email){ alert('Nhân viên này chưa có email trong hồ sơ (thêm ở Firestore > full_employees > email).'); return; }
+  const resultEl = document.getElementById('payrollSendResult');
+  resultEl.textContent = 'Đang gửi email...';
+  try{
+    await apiCall('sendPayrollEmail', buildPayrollPayload_());
+    resultEl.textContent = `Đã gửi email phiếu lương tới ${payrollDetail.email}.`;
+  } catch(err){
+    resultEl.textContent = 'Lỗi: ' + err.message;
+  }
+}
+
+function csvEscape_(v){
+  const s = String(v ?? '');
+  return /[",\n]/.test(s) ? '"' + s.replace(/"/g,'""') + '"' : s;
+}
+function downloadCSV_(filename, headers, rows){
+  const lines = [headers, ...rows].map(row => row.map(csvEscape_).join(','));
+  const csvContent = '﻿' + lines.join('\r\n'); // BOM để Excel hiển thị đúng tiếng Việt
+  const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
+function exportChamCongCSV(){
+  if(!lastChamCongRecords || lastChamCongRecords.length === 0){
+    alert('Chưa có dữ liệu để xuất. Vui lòng chọn khoảng ngày và bấm "Xem" trước.');
+    return;
+  }
+  const headers = ['Ngày','Nhân viên','Ca','Giờ vào','Giờ ra','Tổng giờ','Phút đi muộn','Phút tăng ca','Tăng ca đã duyệt'];
+  const rows = lastChamCongRecords.map(r => [r.date, r.employeeName, r.ca, r.checkIn, r.checkOut, r.totalHours, r.lateMinutes, r.overtimeMinutes || 0, r.overtimeApproved ? 'Có' : 'Không']);
+  const fromIso = document.getElementById('chamCongHistoryFrom').value || '';
+  const toIso = document.getElementById('chamCongHistoryTo').value || '';
+  downloadCSV_(`ChamCong_${fromIso}_${toIso}.csv`, headers, rows);
+}
+
+function exportPayrollCSV(){
+  if(!payrollDetail){
+    alert('Vui lòng bấm "Xem chấm công & tính lương" trước.');
+    return;
+  }
+  const p = buildPayrollPayload_();
+  const headers = ['Mục','Số tiền'];
+  const rows = [
+    ['Nhân viên', p.employeeName],
+    ['Loại hình', p.employeeType],
+    ['Kỳ lương', `${p.from} - ${p.to}`],
+    ['Tổng giờ công', p.totalHours],
+    ['Lương cơ bản', p.basePay],
+    ['Thưởng hiệu suất', p.bonusPerformance],
+    ['Làm thêm giờ', p.overtimePay],
+    ['Hỗ trợ xăng ship đơn', p.gasAllowance],
+    ['Phụ cấp ăn trưa', p.lunchAllowance],
+    ['Nghỉ không lương', -p.unpaidLeave],
+    ['Tạm ứng', -p.advance],
+    ['Đi làm muộn', -p.latePenalty],
+    ['Tổng thực nhận', p.totalPay]
+  ];
+  downloadCSV_(`Luong_${p.employeeName}_${p.from.replace(/\//g,'-')}_${p.to.replace(/\//g,'-')}.csv`, headers, rows);
+}
+
 // ---------- tabs ----------
 function switchTab(name){
-  if((name==='baocao' || name==='chiphi') && (!currentUser || currentUser.role!=='Chu')) return;
+  if((name==='baocao' || name==='chiphi' || name==='luong') && (!currentUser || currentUser.role!=='Chu')) return;
   document.querySelectorAll('.view').forEach(v=>v.classList.remove('active'));
   document.getElementById('view-'+name).classList.add('active');
   document.querySelectorAll('.tab-btn').forEach(b=>b.classList.toggle('active', b.dataset.tab===name));
   if(name==='baocao') renderReport();
   if(name==='donhang') refreshDonHangTab(null);
   if(name==='chamcong') refreshChamCongTab();
+  if(name==='luong') initPayrollTab();
 }
 
 // Gọi API "gộp" cho tab Chấm công — lịch xếp ca tuần đang xem + lịch sử chấm công hôm nay, trong 1 lần gọi.
@@ -957,6 +1420,9 @@ document.getElementById('photoInput').addEventListener('change', function(e){
       loadAttendanceLog();
       if(pendingCheckType === 'in' && res.late){
         alert(`Bạn đã đến muộn ${res.lateMinutes} phút (ca ${res.ca}).`);
+      }
+      if(pendingCheckType === 'out' && res.overtimeMinutes > 0){
+        alert(`Phát sinh tăng ca ${res.overtimeMinutes} phút hôm nay, chờ Chủ duyệt.`);
       }
     } catch(err){
       alert('Không lưu được vào hệ thống: ' + err.message);
@@ -1054,11 +1520,14 @@ async function loadMyStatus(dataOverride){
           <div style="font-size:12.5px;color:var(--ink-soft);">Đừng quên Check-out khi hết ca nhé!</div>
         </div>`;
       }
+      const otTag = rec.overtimeMinutes > 0
+        ? `<span class="method-tag" style="background:${rec.overtimeApproved?'#E4F3EC':'#FFF3D6'};color:${rec.overtimeApproved?'var(--brand-dark)':'#8A6100'};margin-left:6px;">Tăng ca ${rec.overtimeMinutes}p${rec.overtimeApproved?' · Đã duyệt':' · Chờ duyệt'}</span>`
+        : '';
       return `<div style="margin-bottom:8px;">
-        <div class="top-line" style="display:flex;align-items:center;gap:8px;margin-bottom:4px;">
+        <div class="top-line" style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:4px;">
           <span class="badge badge-in">${rec.ca ? rec.ca+' ' : ''}${rec.checkIn}</span>
           <span style="color:var(--ink-soft);">→</span>
-          <span class="badge badge-out">${rec.checkOut}</span>${lateTag}
+          <span class="badge badge-out">${rec.checkOut}</span>${lateTag}${otTag}
         </div>
         <div style="font-size:12.5px;color:var(--ink-soft);">Hoàn thành ca${rec.totalHours ? ' · '+rec.totalHours+'h' : ''}.</div>
       </div>`;
@@ -1138,6 +1607,22 @@ function renderLateSummary(){
   }
 }
 
+async function approveOvertime(id){
+  if(!currentUser || currentUser.role !== 'Chu') return;
+  if(!confirm('Xác nhận duyệt tăng ca cho ngày này? Số phút tăng ca sẽ được cộng vào giờ công để tính lương.')) return;
+  showBusy('Đang duyệt tăng ca...');
+  try{
+    await apiCall('approveOvertime', { id });
+    const rec = lastChamCongRecords.find(r => r.id === id);
+    if(rec) rec.overtimeApproved = true;
+    renderChamCongHistoryList();
+  } catch(err){
+    alert('Không duyệt được: ' + err.message);
+  } finally{
+    hideBusy();
+  }
+}
+
 function renderChamCongHistoryList(){
   const el = document.getElementById('chamCongHistoryResult');
   const records = chamCongFilter === 'late' ? lastChamCongRecords.filter(r => r.lateMinutes > 0) : lastChamCongRecords;
@@ -1147,15 +1632,36 @@ function renderChamCongHistoryList(){
       : '<div class="empty-state">Không có dữ liệu chấm công.</div>';
     return;
   }
-  el.innerHTML = records.map(rec => `
+  const isOwner = currentUser && currentUser.role === 'Chu';
+  el.innerHTML = records.map(rec => {
+    const photos = (rec.photo || '').split(' | ').filter(Boolean);
+    const inPhoto = photos[0] || '';
+    const outPhoto = photos.length > 1 ? photos[1] : '';
+    const photoLinks = [
+      inPhoto ? `<a href="${inPhoto}" target="_blank">Ảnh vào</a>` : '',
+      outPhoto ? `<a href="${outPhoto}" target="_blank">Ảnh ra</a>` : ''
+    ].filter(Boolean).join(' · ');
+    let otTag = '';
+    if(rec.overtimeMinutes > 0){
+      otTag = rec.overtimeApproved
+        ? `<span class="method-tag" style="background:#E4F3EC;color:var(--brand-dark);">Tăng ca ${rec.overtimeMinutes}p · Đã duyệt</span>`
+        : (isOwner
+          ? `<button onclick="approveOvertime('${rec.id}')" class="method-tag" style="background:#FFF3D6;color:#8A6100;border:none;cursor:pointer;">Tăng ca ${rec.overtimeMinutes}p · Duyệt</button>`
+          : `<span class="method-tag" style="background:#FFF3D6;color:#8A6100;">Tăng ca ${rec.overtimeMinutes}p · Chờ duyệt</span>`);
+    }
+    return `
     <div class="delivered-row">
       <div>
         <div class="who">${rec.employeeName}${rec.ca ? ' · '+rec.ca : ''}</div>
-        <div class="sub">${rec.date} · Vào: ${rec.checkIn || '—'} · Ra: ${rec.checkOut || '—'}${rec.totalHours ? ' · ' + rec.totalHours + 'h' : ''}</div>
+        <div class="sub">${rec.date} · Vào: ${rec.checkIn || '—'} · Ra: ${rec.checkOut || '—'}${rec.totalHours ? ' · ' + rec.totalHours + 'h' : ''}${photoLinks ? ' · '+photoLinks : ''}</div>
       </div>
-      ${rec.lateMinutes > 0 ? `<span class="method-tag" style="background:#FDECE6;color:var(--danger);">Muộn ${rec.lateMinutes}p</span>` : ''}
+      <div style="display:flex;flex-direction:column;gap:4px;align-items:flex-end;">
+        ${rec.lateMinutes > 0 ? `<span class="method-tag" style="background:#FDECE6;color:var(--danger);">Muộn ${rec.lateMinutes}p</span>` : ''}
+        ${otTag}
+      </div>
     </div>
-  `).join('');
+  `;
+  }).join('');
 }
 
 // ---------- sắp xếp ca làm ----------
@@ -1215,7 +1721,10 @@ async function loadShiftWeek(dataOverride){
 const DAY_LABELS_ = ['CN','T2','T3','T4','T5','T6','T7'];
 
 async function renderShiftWeek(rows, isOwner, fromDateStr){
-  const employees = await ensureEmployeeList();
+  const allEmployees = await ensureEmployeeList();
+  // Nhân viên Full time làm ca cố định 9h-18h mỗi ngày, không cần xếp ca — chỉ Part time mới hiện ở lưới này.
+  // Tài khoản Chủ không hiện trong danh sách xếp ca (Chủ không tự xếp ca cho mình).
+  const employees = allEmployees.filter(e => (e.employeeType || 'Part time') !== 'Full time' && !e.isOwnerAccount);
   const gridWrap = document.getElementById('shiftGridWrap');
   const saveBtn = document.getElementById('saveShiftBtn');
   document.getElementById('shiftSectionTitle').textContent = isOwner ? 'Sắp xếp ca làm (Chủ)' : 'Ca làm tuần này';
@@ -1285,6 +1794,25 @@ async function saveShiftWeek(){
 let editingPackageId = null;
 let lastPackageRows = [];
 let lastPackageIsOwner = false;
+let pendingBillPhoto = null;
+
+function triggerBillPhoto(){ document.getElementById('billPhotoInput').click(); }
+document.getElementById('billPhotoInput').addEventListener('change', function(e){
+  const file = e.target.files[0];
+  if(file){
+    showBusy('Đang xử lý ảnh...');
+    compressImage(file).then(url => {
+      hideBusy();
+      pendingBillPhoto = url;
+      document.getElementById('billPreviewWrap').innerHTML =
+        `<img src="${pendingBillPhoto}" style="width:60px;height:60px;object-fit:cover;border-radius:8px;border:1px solid var(--border);margin-top:8px;">`;
+    }).catch(err => {
+      hideBusy();
+      alert('Không xử lý được ảnh bill: ' + err.message);
+    });
+  }
+  e.target.value = '';
+});
 
 async function sendPackage(){
   if(!currentUser){ alert('Vui lòng đăng nhập trước.'); return; }
@@ -1296,9 +1824,9 @@ async function sendPackage(){
   showBusy(editingPackageId ? 'Đang cập nhật...' : 'Đang lưu đóng gói...');
   try{
     if(editingPackageId){
-      await apiCall('updatePackage', { packageId: editingPackageId, customer, amount });
+      await apiCall('updatePackage', { packageId: editingPackageId, customer, amount, billPhoto: pendingBillPhoto });
     } else {
-      await apiCall('createPackage', { customer, amount });
+      await apiCall('createPackage', { customer, amount, billPhoto: pendingBillPhoto });
     }
     cancelPackageEdit();
     refreshPackageTab();
@@ -1315,6 +1843,10 @@ function editPackage(packageId){
   editingPackageId = packageId;
   document.getElementById('packageCustomerName').value = p.customer;
   document.getElementById('packageAmount').value = formatVNMoney(p.amount);
+  pendingBillPhoto = null;
+  document.getElementById('billPreviewWrap').innerHTML = p.billUrl
+    ? `<a href="${p.billUrl}" target="_blank" style="font-size:12px;">Ảnh bill hiện tại (chạm để xem) — chọn "Chụp ảnh bill" để đổi ảnh khác</a>`
+    : '';
   document.getElementById('donggoiFormTitle').textContent = 'Sửa đóng gói';
   document.getElementById('donggoiSaveBtn').textContent = 'Cập nhật đóng gói';
   document.getElementById('donggoiCancelBtn').style.display = 'flex';
@@ -1326,6 +1858,8 @@ function cancelPackageEdit(){
   editingPackageId = null;
   document.getElementById('packageCustomerName').value = '';
   document.getElementById('packageAmount').value = '';
+  pendingBillPhoto = null;
+  document.getElementById('billPreviewWrap').innerHTML = '';
   document.getElementById('donggoiFormTitle').textContent = 'Đóng gói đồ mới';
   document.getElementById('donggoiSaveBtn').textContent = 'Lưu đóng gói';
   document.getElementById('donggoiCancelBtn').style.display = 'none';
@@ -1391,21 +1925,36 @@ async function refreshDonHangTab(rangeOverride){
   }
 }
 
+let packageFilter = 'all'; // 'all' | 'pending'
+
+function setPackageFilter(f){
+  packageFilter = f;
+  document.getElementById('packageFilterAllBtn').classList.toggle('selected', f==='all');
+  document.getElementById('packageFilterPendingBtn').classList.toggle('selected', f==='pending');
+  renderPackageHistoryList();
+}
+
 function renderPackageHistoryList(){
   const el = document.getElementById('packageHistoryResult');
-  if(lastPackageRows.length === 0){
-    el.innerHTML = '<div class="empty-state">Không có đơn đóng gói nào trong khoảng ngày này.</div>';
+  // "Chưa trả" là tồn đọng thực tế, không giới hạn theo khoảng ngày lịch sử đang xem -> lấy từ danh sách
+  // pendingPackages (đã tải sẵn, dùng chung với bộ chọn khách hàng ở tab Trả đồ) thay vì lastPackageRows.
+  const rows = packageFilter === 'pending' ? pendingPackages : lastPackageRows;
+  const isOwner = currentUser && currentUser.role === 'Chu';
+  if(rows.length === 0){
+    el.innerHTML = packageFilter === 'pending'
+      ? '<div class="empty-state">Không có đơn nào chưa trả.</div>'
+      : '<div class="empty-state">Không có đơn đóng gói nào trong khoảng ngày này.</div>';
     return;
   }
-  el.innerHTML = lastPackageRows.map(p => `
+  el.innerHTML = rows.map(p => `
     <div class="delivered-row">
       <div>
         <div class="who">${p.customer}</div>
-        <div class="sub">${p.date}${p.time ? ' '+p.time : ''} · ${p.amount.toLocaleString('vi-VN')}đ${p.employeeName ? ' · NV: '+p.employeeName : ''}</div>
+        <div class="sub">${p.date}${p.time ? ' '+p.time : ''} · ${p.amount.toLocaleString('vi-VN')}đ${p.billUrl ? ` · <a href="${p.billUrl}" target="_blank">Xem bill</a>` : ''}${p.employeeName ? ' · NV: '+p.employeeName : ''}</div>
       </div>
       <div style="display:flex;flex-direction:column;align-items:flex-end;gap:6px;">
         <span class="method-tag" style="${p.delivered ? 'background:#E4F3EC;color:var(--brand-dark);' : ''}">${p.delivered ? 'Đã trả đồ' : 'Chưa trả đồ'}</span>
-        ${lastPackageIsOwner ? `<div style="display:flex;gap:6px;">
+        ${isOwner ? `<div style="display:flex;gap:6px;">
           <button class="confirm-btn no" onclick="editPackage('${p.packageId}')">Sửa</button>
           <button class="confirm-btn no" style="background:#FDECE6;color:var(--danger);" onclick="deletePackage('${p.packageId}')">Xoá</button>
         </div>` : ''}
@@ -1475,7 +2024,7 @@ function clearSelectedPackage(){
 
 // ---------- thông báo trả đồ ----------
 let selectedMethod = null;
-let pendingBillPhoto = null;
+let selectedDeliveryMethod = null;
 
 function selectMethod(m){
   selectedMethod = m;
@@ -1483,23 +2032,11 @@ function selectMethod(m){
   document.getElementById('methodTransferBtn').classList.toggle('selected', m==='Chuyển khoản');
 }
 
-function triggerBillPhoto(){ document.getElementById('billPhotoInput').click(); }
-document.getElementById('billPhotoInput').addEventListener('change', function(e){
-  const file = e.target.files[0];
-  if(file){
-    showBusy('Đang xử lý ảnh...');
-    compressImage(file).then(url => {
-      hideBusy();
-      pendingBillPhoto = url;
-      document.getElementById('billPreviewWrap').innerHTML =
-        `<img src="${pendingBillPhoto}" style="width:60px;height:60px;object-fit:cover;border-radius:8px;border:1px solid var(--border);margin-top:8px;">`;
-    }).catch(err => {
-      hideBusy();
-      alert('Không xử lý được ảnh bill: ' + err.message);
-    });
-  }
-  e.target.value = '';
-});
+function selectDeliveryMethod(m){
+  selectedDeliveryMethod = m;
+  document.getElementById('deliveryMethodShipBtn').classList.toggle('selected', m==='Giao đồ');
+  document.getElementById('deliveryMethodShopBtn').classList.toggle('selected', m==='Tại tiệm');
+}
 
 let editingOrderId = null;
 
@@ -1511,13 +2048,14 @@ async function sendReturnNotice(){
   const amount = parseInt(document.getElementById('orderAmount').value.replace(/\D/g,'')) || 0;
   if(!amount){ alert('Không xác định được số tiền — vui lòng chọn lại khách hàng đã đóng gói.'); return; }
   if(!selectedMethod){ alert('Vui lòng chọn hình thức thanh toán.'); return; }
+  if(!selectedDeliveryMethod){ alert('Vui lòng chọn hình thức trả đồ.'); return; }
 
   showBusy(editingOrderId ? 'Đang cập nhật...' : 'Đang gửi thông báo...');
   try{
     if(editingOrderId){
-      await apiCall('updateReturnNotice', { orderId: editingOrderId, customer, amount, method: selectedMethod, billPhoto: pendingBillPhoto });
+      await apiCall('updateReturnNotice', { orderId: editingOrderId, customer, amount, method: selectedMethod, deliveryMethod: selectedDeliveryMethod });
     } else {
-      await apiCall('createReturnNotice', { customer, amount, method: selectedMethod, billPhoto: pendingBillPhoto, packageId: selectedPackage.packageId });
+      await apiCall('createReturnNotice', { customer, amount, method: selectedMethod, deliveryMethod: selectedDeliveryMethod, packageId: selectedPackage.packageId });
     }
     cancelReturnNoticeEdit();
     refreshDonHangTab();
@@ -1529,7 +2067,6 @@ async function sendReturnNotice(){
 }
 
 // Chủ bấm "Sửa" trên 1 dòng đã trả đồ -> nạp lại dữ liệu vào form phía trên, chuyển form sang chế độ Sửa.
-// Không chọn ảnh bill mới thì ảnh cũ được giữ nguyên (backend chỉ thay ảnh khi có billPhoto mới gửi lên).
 // Sửa thông báo đã có KHÔNG cần chọn lại đơn đóng gói (đây là sửa giao dịch đã chốt, không phải tạo mới) —
 // nên chuyển sang hiện ô tên khách hàng dạng chữ tự do, ẩn phần chọn đóng gói đi.
 function editReturnNotice(orderId){
@@ -1542,10 +2079,7 @@ function editReturnNotice(orderId){
   document.getElementById('orderAmount').value = o.amount;
   document.getElementById('editAmountDisplay').textContent = 'Số tiền: ' + formatVNMoney(o.amount) + 'đ';
   selectMethod(o.method);
-  pendingBillPhoto = null;
-  document.getElementById('billPreviewWrap').innerHTML = o.billUrl
-    ? `<a href="${o.billUrl}" target="_blank" style="font-size:12px;">Ảnh bill hiện tại (chạm để xem) — chọn "Chụp ảnh bill" để đổi ảnh khác</a>`
-    : '';
+  selectDeliveryMethod(o.deliveryMethod);
   document.getElementById('donhangFormTitle').textContent = 'Sửa thông báo trả đồ';
   document.getElementById('donhangSaveBtn').textContent = 'Cập nhật thông báo';
   document.getElementById('donhangCancelBtn').style.display = 'flex';
@@ -1560,10 +2094,11 @@ function cancelReturnNoticeEdit(){
   document.getElementById('customerNameEditWrap').style.display = 'none';
   document.getElementById('editAmountDisplay').textContent = '';
   selectedMethod = null;
-  pendingBillPhoto = null;
   document.getElementById('methodCashBtn').classList.remove('selected');
   document.getElementById('methodTransferBtn').classList.remove('selected');
-  document.getElementById('billPreviewWrap').innerHTML = '';
+  selectedDeliveryMethod = null;
+  document.getElementById('deliveryMethodShipBtn').classList.remove('selected');
+  document.getElementById('deliveryMethodShopBtn').classList.remove('selected');
   document.getElementById('donhangFormTitle').textContent = 'Thông báo trả đồ cho khách';
   document.getElementById('donhangSaveBtn').textContent = 'Gửi thông báo trả đồ';
   document.getElementById('donhangCancelBtn').style.display = 'none';
@@ -1623,7 +2158,7 @@ function renderDeliveredList(){
 
   if(notices.length===0){
     el.innerHTML = deliveredFilter==='unconfirmed'
-      ? '<div class="empty-state">Không có đơn nào chưa xác nhận.</div>'
+      ? '<div class="empty-state">Không có đơn nào chưa thanh toán.</div>'
       : `<div class="empty-state">Chưa có thông báo trả đồ nào${currentDeliveredRange ? ' trong khoảng thời gian này' : ' hôm nay'}.</div>`;
     return;
   }
@@ -1635,10 +2170,11 @@ function renderDeliveredList(){
       </div>
       <div style="display:flex; flex-direction:column; align-items:flex-end; gap:6px;">
         <div style="display:flex; align-items:center; gap:8px;">
+          ${o.deliveryMethod ? `<span class="method-tag">${o.deliveryMethod}</span>` : ''}
           ${o.method ? `<span class="method-tag">${o.method}</span>` : ''}
           ${lastDeliveredIsOwner ? `<button class="confirm-btn ${o.confirmed?'yes':'no'}" onclick="toggleConfirm('${o.orderId}', ${!o.confirmed})">
-            ${o.confirmed ? 'Đã xác nhận ✓' : 'Chờ xác nhận'}
-          </button>` : (o.confirmed ? '<span class="method-tag" style="background:#E4F3EC;color:var(--brand-dark);">Đã xác nhận</span>' : '<span class="method-tag">Chờ xác nhận</span>')}
+            ${o.confirmed ? 'Đã thanh toán ✓' : 'Chờ thanh toán'}
+          </button>` : (o.confirmed ? '<span class="method-tag" style="background:#E4F3EC;color:var(--brand-dark);">Đã thanh toán</span>' : '<span class="method-tag">Chờ thanh toán</span>')}
         </div>
         ${lastDeliveredIsOwner ? `<div style="display:flex;gap:6px;">
           <button class="confirm-btn no" onclick="editReturnNotice('${o.orderId}')">Sửa</button>
@@ -1669,7 +2205,7 @@ function loadReturnNoticesForDate(){
 let reportCurrentRange = null;
 async function renderReport(rangeOverride){
   reportCurrentRange = rangeOverride || null;
-  const statEls = ['statLate','statOrders','statRevenue','statExpense','statProfit','statUnconfirmed'].map(id=>document.getElementById(id));
+  const statEls = ['statLate','statOrders','statRevenue','statRevenueCash','statRevenueTransfer','statExpense','statProfit','statUnconfirmed','statPendingReturn'].map(id=>document.getElementById(id));
   statEls.forEach(el=>el.textContent = '…');
   try{
     const params = rangeOverride ? { from: rangeOverride.from, to: rangeOverride.to } : {};
@@ -1680,12 +2216,15 @@ async function renderReport(rangeOverride){
     document.getElementById('statLate').textContent = r.lateCount || 0;
     document.getElementById('statOrders').textContent = r.orderCount || 0;
     document.getElementById('statRevenue').textContent = (r.revenue || 0).toLocaleString('vi-VN')+'đ';
+    document.getElementById('statRevenueCash').textContent = (r.revenueCash || 0).toLocaleString('vi-VN')+'đ';
+    document.getElementById('statRevenueTransfer').textContent = (r.revenueTransfer || 0).toLocaleString('vi-VN')+'đ';
     document.getElementById('statExpense').textContent = (r.totalExpense || 0).toLocaleString('vi-VN')+'đ';
     const profitEl = document.getElementById('statProfit');
     const profit = r.profit || 0;
     profitEl.textContent = profit.toLocaleString('vi-VN')+'đ';
     profitEl.style.color = profit >= 0 ? 'var(--brand-dark)' : 'var(--danger)';
     document.getElementById('statUnconfirmed').textContent = r.unconfirmedCount || 0;
+    document.getElementById('statPendingReturn').textContent = r.pendingReturnCount || 0;
   } catch(err){
     statEls.forEach(el=>el.textContent = '—');
   }
@@ -1728,6 +2267,14 @@ function loadReportForDate(){
   const toIso = document.getElementById('reportTo').value;
   if(!fromIso || !toIso){ alert('Vui lòng chọn khoảng ngày.'); return; }
   renderReport({ from: toVNDate(fromIso), to: toVNDate(toIso) });
+}
+
+// Bấm vào thẻ "Đơn chưa trả" ở Báo cáo -> nhảy sang tab Đóng gói, tự lọc "Chưa trả".
+// Đơn chưa trả là tồn đọng thực tế (không phụ thuộc khoảng ngày báo cáo đang xem), nên dùng luôn
+// danh sách pendingPackages (đã tải sẵn khi đăng nhập / thao tác đóng gói) thay vì gọi lại theo ngày.
+function goToPendingReturn(){
+  switchTab('donggoi');
+  loadPendingPackages().then(() => setPackageFilter('pending'));
 }
 
 // Bấm vào thẻ "Chi phí" ở Báo cáo -> nhảy sang tab Chi phí, tự lọc đúng khoảng ngày đang xem (tất cả danh mục).
