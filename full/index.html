@@ -782,7 +782,13 @@
         <input type="text" id="payrollTo" class="date-input-vn" readonly placeholder="dd/mm/yyyy">
 
         <button class="btn btn-ghost btn-full btn-sm" style="margin-top:10px;" onclick="loadPayrollDetail()">Xem chấm công &amp; tính lương</button>
+        <button class="btn btn-ghost btn-full btn-sm" style="margin-top:8px;" onclick="loadPayrollHistory()">📜 Xem phiếu lương đã lưu</button>
         <div id="payrollDetailResult" style="margin-top:10px;font-size:13px;color:var(--ink-soft);"></div>
+      </div>
+
+      <div class="card" id="payrollHistoryCard" style="display:none;">
+        <div style="font-weight:800;font-size:11.5px;color:var(--brand-dark);text-transform:uppercase;letter-spacing:.04em;margin-bottom:6px;">Lịch sử phiếu lương đã lưu</div>
+        <div id="payrollHistoryWrap"></div>
       </div>
 
       <div class="card" id="payrollAttendanceCard" style="display:none;">
@@ -1133,6 +1139,7 @@ async function loadPayrollDetail(){
   if(!employeeId){ resultEl.textContent = 'Vui lòng chọn nhân viên.'; return; }
   if(!fromIso || !toIso){ resultEl.textContent = 'Vui lòng chọn khoảng ngày.'; return; }
   resultEl.textContent = 'Đang tải...';
+  document.getElementById('payrollHistoryCard').style.display = 'none';
   try{
     const r = await apiCall('getPayrollDetail', { employeeId, from: toVNDate(fromIso), to: toVNDate(toIso) });
     payrollDetail = r;
@@ -1207,9 +1214,66 @@ async function savePayrollDetailed(){
   try{
     await apiCall('savePayrollDetail', buildPayrollPayload_());
     resultEl.textContent = 'Đã lưu phiếu lương.';
+    // Nếu bảng lịch sử đang mở cho đúng nhân viên này thì tải lại luôn cho thấy phiếu vừa lưu.
+    const card = document.getElementById('payrollHistoryCard');
+    if(card.style.display !== 'none') loadPayrollHistory();
   } catch(err){
     resultEl.textContent = 'Lỗi: ' + err.message;
   }
+}
+
+// ---------- Lịch sử phiếu lương đã lưu ----------
+async function loadPayrollHistory(){
+  const employeeId = document.getElementById('payrollEmployeeSelect').value;
+  if(!employeeId){ alert('Vui lòng chọn nhân viên.'); return; }
+  const card = document.getElementById('payrollHistoryCard');
+  const wrap = document.getElementById('payrollHistoryWrap');
+  card.style.display = 'block';
+  wrap.innerHTML = '<div class="empty-state">Đang tải...</div>';
+  try{
+    const r = await apiCall('getPayrollDetailHistory', { employeeId });
+    renderPayrollHistory(r.rows || []);
+  } catch(err){
+    wrap.innerHTML = '<div class="empty-state">Lỗi: ' + err.message + '</div>';
+  }
+}
+
+let payrollHistoryRows_ = [];
+function renderPayrollHistory(rows){
+  payrollHistoryRows_ = rows;
+  const wrap = document.getElementById('payrollHistoryWrap');
+  if(!rows.length){
+    wrap.innerHTML = '<div class="empty-state">Nhân viên này chưa có phiếu lương nào được lưu.</div>';
+    return;
+  }
+  const fmt = n => Number(n||0).toLocaleString('vi-VN') + 'đ';
+  wrap.innerHTML = rows.map((r,i) => `
+    <div class="delivered-row" style="flex-direction:column;align-items:stretch;cursor:pointer;" onclick="togglePayrollHistoryItem(${i})">
+      <div class="row" style="justify-content:space-between;">
+        <div>
+          <div class="who">Kỳ ${r.from} – ${r.to}</div>
+          <div class="sub">Lưu lúc: ${r.savedAt || '-'}</div>
+        </div>
+        <div class="mono" style="font-weight:800;">${fmt(r.totalPay)}</div>
+      </div>
+      <div id="payrollHistoryDetail${i}" style="display:none;margin-top:10px;padding-top:10px;border-top:1px solid var(--border);font-size:12.5px;line-height:1.7;">
+        <div>Tổng giờ công: <b>${r.totalHours}h</b> — Lương cơ bản: <b>${fmt(r.basePay)}</b></div>
+        ${r.bonusPerformance ? `<div>+ Thưởng hiệu suất: ${fmt(r.bonusPerformance)}</div>` : ''}
+        ${r.overtimePay ? `<div>+ Làm thêm giờ: ${fmt(r.overtimePay)}</div>` : ''}
+        ${r.gasAllowance ? `<div>+ Hỗ trợ xăng ship đơn: ${fmt(r.gasAllowance)}</div>` : ''}
+        ${r.lunchAllowance ? `<div>+ Phụ cấp ăn trưa: ${fmt(r.lunchAllowance)}</div>` : ''}
+        ${r.unpaidLeave ? `<div>− Nghỉ không lương: ${fmt(r.unpaidLeave)}</div>` : ''}
+        ${r.advance ? `<div>− Tạm ứng: ${fmt(r.advance)}</div>` : ''}
+        ${r.latePenalty ? `<div>− Đi làm muộn: ${fmt(r.latePenalty)}</div>` : ''}
+        <div style="font-weight:800;margin-top:4px;">Tổng thực nhận: ${fmt(r.totalPay)}</div>
+      </div>
+    </div>
+  `).join('');
+}
+
+function togglePayrollHistoryItem(i){
+  const el = document.getElementById('payrollHistoryDetail'+i);
+  if(el) el.style.display = el.style.display === 'none' ? 'block' : 'none';
 }
 
 async function sendPayrollEmailNow(){
