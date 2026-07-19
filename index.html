@@ -1115,7 +1115,9 @@ async function initPayrollTab(){
   if(!sel.dataset.loaded){
     try{
       const r = await apiCall('getEmployees', {});
-      const employees = r.employees || [];
+      // Tài khoản Chủ không phải nhân viên được trả lương theo giờ công — không cần hiện trong
+      // danh sách chọn nhân viên để tính lương.
+      const employees = (r.employees || []).filter(e => !e.isOwnerAccount);
       sel.innerHTML = employees.map(e => `<option value="${e.employeeId}">${e.name} (${e.employeeType || 'Part time'})</option>`).join('')
         || '<option value="">Chưa có nhân viên</option>';
       sel.dataset.loaded = '1';
