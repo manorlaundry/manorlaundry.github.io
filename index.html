@@ -811,6 +811,8 @@
         <input type="text" inputmode="numeric" id="payrollGasAllowance" placeholder="0" oninput="recalcPayrollTotal()">
         <label class="field-label" style="margin-top:8px;">Phụ cấp ăn trưa</label>
         <input type="text" inputmode="numeric" id="payrollLunchAllowance" placeholder="0" oninput="recalcPayrollTotal()">
+        <label class="field-label" style="margin-top:8px;">Lương trách nhiệm</label>
+        <input type="text" inputmode="numeric" id="payrollResponsibilityAllowance" placeholder="0" oninput="recalcPayrollTotal()">
 
         <div style="font-weight:800;font-size:11.5px;color:var(--danger);text-transform:uppercase;letter-spacing:.04em;margin:14px 0 6px;">Khoản trừ (để trống nếu không có)</div>
         <label class="field-label">Nghỉ không lương</label>
@@ -977,7 +979,7 @@ function attachMoneyInput(id){
     el.value = digits ? formatVNMoney(digits) : '';
   });
 }
-['packageAmount','expenseAmount','payrollBonusPerformance','payrollOvertimePay','payrollGasAllowance','payrollLunchAllowance','payrollUnpaidLeave','payrollAdvance','payrollLatePenalty'].forEach(attachMoneyInput);
+['packageAmount','expenseAmount','payrollBonusPerformance','payrollOvertimePay','payrollGasAllowance','payrollLunchAllowance','payrollResponsibilityAllowance','payrollUnpaidLeave','payrollAdvance','payrollLatePenalty'].forEach(attachMoneyInput);
 
 // ---------- lịch chọn ngày tự viết (dd/mm/yyyy cố định, không phụ thuộc ngôn ngữ trình duyệt) ----------
 // Input vẫn giữ id cũ và ".value" vẫn trả về đúng chuỗi ISO "yyyy-MM-dd" như input type=date trước đây
@@ -1148,7 +1150,7 @@ async function loadPayrollDetail(){
     resultEl.textContent = `${r.employeeName} — ${r.employeeType} — ${r.records.length} lượt chấm công trong khoảng ngày này.${r.email ? '' : ' ⚠️ Nhân viên chưa có email trong hồ sơ, chưa gửi mail được.'}`;
     renderPayrollAttendance();
     // reset các ô cộng/trừ mỗi lần tải lại
-    ['payrollBonusPerformance','payrollOvertimePay','payrollGasAllowance','payrollLunchAllowance','payrollUnpaidLeave','payrollAdvance','payrollLatePenalty'].forEach(id => document.getElementById(id).value = '');
+    ['payrollBonusPerformance','payrollOvertimePay','payrollGasAllowance','payrollLunchAllowance','payrollResponsibilityAllowance','payrollUnpaidLeave','payrollAdvance','payrollLatePenalty'].forEach(id => document.getElementById(id).value = '');
     document.getElementById('payrollBasePay').textContent = Number(r.basePay).toLocaleString('vi-VN') + 'đ';
     document.getElementById('payrollAttendanceCard').style.display = 'block';
     document.getElementById('payrollCalcCard').style.display = 'block';
@@ -1188,7 +1190,7 @@ function numVal_(id){ return Number(String(document.getElementById(id).value || 
 
 function recalcPayrollTotal(){
   if(!payrollDetail) return;
-  const add = numVal_('payrollBonusPerformance') + numVal_('payrollOvertimePay') + numVal_('payrollGasAllowance') + numVal_('payrollLunchAllowance');
+  const add = numVal_('payrollBonusPerformance') + numVal_('payrollOvertimePay') + numVal_('payrollGasAllowance') + numVal_('payrollLunchAllowance') + numVal_('payrollResponsibilityAllowance');
   const sub = numVal_('payrollUnpaidLeave') + numVal_('payrollAdvance') + numVal_('payrollLatePenalty');
   const total = (Number(payrollDetail.basePay) || 0) + add - sub;
   document.getElementById('payrollTotalPay').textContent = total.toLocaleString('vi-VN') + 'đ';
@@ -1197,10 +1199,11 @@ function recalcPayrollTotal(){
 function buildPayrollPayload_(){
   const add = {
     bonusPerformance: numVal_('payrollBonusPerformance'), overtimePay: numVal_('payrollOvertimePay'),
-    gasAllowance: numVal_('payrollGasAllowance'), lunchAllowance: numVal_('payrollLunchAllowance')
+    gasAllowance: numVal_('payrollGasAllowance'), lunchAllowance: numVal_('payrollLunchAllowance'),
+    responsibilityAllowance: numVal_('payrollResponsibilityAllowance')
   };
   const sub = { unpaidLeave: numVal_('payrollUnpaidLeave'), advance: numVal_('payrollAdvance'), latePenalty: numVal_('payrollLatePenalty') };
-  const totalPay = (Number(payrollDetail.basePay)||0) + add.bonusPerformance + add.overtimePay + add.gasAllowance + add.lunchAllowance
+  const totalPay = (Number(payrollDetail.basePay)||0) + add.bonusPerformance + add.overtimePay + add.gasAllowance + add.lunchAllowance + add.responsibilityAllowance
     - sub.unpaidLeave - sub.advance - sub.latePenalty;
   return Object.assign({
     employeeId: payrollDetail.employeeId, employeeName: payrollDetail.employeeName, employeeType: payrollDetail.employeeType,
@@ -1264,6 +1267,7 @@ function renderPayrollHistory(rows){
         ${r.overtimePay ? `<div>+ Làm thêm giờ: ${fmt(r.overtimePay)}</div>` : ''}
         ${r.gasAllowance ? `<div>+ Hỗ trợ xăng ship đơn: ${fmt(r.gasAllowance)}</div>` : ''}
         ${r.lunchAllowance ? `<div>+ Phụ cấp ăn trưa: ${fmt(r.lunchAllowance)}</div>` : ''}
+        ${r.responsibilityAllowance ? `<div>+ Lương trách nhiệm: ${fmt(r.responsibilityAllowance)}</div>` : ''}
         ${r.unpaidLeave ? `<div>− Nghỉ không lương: ${fmt(r.unpaidLeave)}</div>` : ''}
         ${r.advance ? `<div>− Tạm ứng: ${fmt(r.advance)}</div>` : ''}
         ${r.latePenalty ? `<div>− Đi làm muộn: ${fmt(r.latePenalty)}</div>` : ''}
@@ -1338,6 +1342,7 @@ function exportPayrollCSV(){
     ['Làm thêm giờ', p.overtimePay],
     ['Hỗ trợ xăng ship đơn', p.gasAllowance],
     ['Phụ cấp ăn trưa', p.lunchAllowance],
+    ['Lương trách nhiệm', p.responsibilityAllowance],
     ['Nghỉ không lương', -p.unpaidLeave],
     ['Tạm ứng', -p.advance],
     ['Đi làm muộn', -p.latePenalty],
