@@ -547,6 +547,7 @@
           <button class="btn btn-ghost btn-full btn-sm" style="margin-top:10px;" onclick="loadCheckInHistory()">Xem</button>
           <button class="btn btn-ghost btn-full btn-sm" style="margin-top:8px;" id="chamCongExportBtn" onclick="exportChamCongCSV()">⬇️ Xuất file (Excel/CSV)</button>
           <div id="lateSummaryWrap" style="margin-top:10px;"></div>
+          <div id="otSummaryWrap" style="margin-top:10px;"></div>
           <div id="chamCongHistoryResult" style="margin-top:10px;"></div>
         </div>
       </div>
@@ -827,14 +828,20 @@
 
       <div class="card" id="payrollCalcCard" style="display:none;">
         <div class="row" style="justify-content:space-between;">
-          <span class="field-label" style="margin:0;">Lương cơ bản</span>
+          <span class="field-label" style="margin:0;">Lương cơ bản (giờ chính thức)</span>
           <span class="mono" id="payrollBasePay" style="font-weight:800;font-size:15px;">0đ</span>
         </div>
+        <div class="row" style="justify-content:space-between;margin-top:8px;">
+          <span class="field-label" style="margin:0;">Giờ chính thức / Giờ tăng ca đã duyệt</span>
+          <span class="mono" id="payrollHoursSplit" style="font-weight:700;font-size:13px;">0h / 0h</span>
+        </div>
+        <label class="field-label" style="margin-top:10px;">Hệ số lương tăng ca (VD: 1.5)</label>
+        <input type="text" inputmode="decimal" id="payrollOtMultiplier" placeholder="Để trống = tính 1x" oninput="recalcOvertimePay()">
 
         <div style="font-weight:800;font-size:11.5px;color:var(--brand-dark);text-transform:uppercase;letter-spacing:.04em;margin:14px 0 6px;">Khoản cộng (để trống nếu không có)</div>
         <label class="field-label">Thưởng hiệu suất</label>
         <input type="text" inputmode="numeric" id="payrollBonusPerformance" placeholder="0" oninput="recalcPayrollTotal()">
-        <label class="field-label" style="margin-top:8px;">Làm thêm giờ</label>
+        <label class="field-label" style="margin-top:8px;">Làm thêm giờ (tự tính từ giờ tăng ca × hệ số, có thể sửa tay)</label>
         <input type="text" inputmode="numeric" id="payrollOvertimePay" placeholder="0" oninput="recalcPayrollTotal()">
         <label class="field-label" style="margin-top:8px;">Hỗ trợ xăng ship đơn</label>
         <input type="text" inputmode="numeric" id="payrollGasAllowance" placeholder="0" oninput="recalcPayrollTotal()">
@@ -1182,13 +1189,15 @@ async function loadPayrollDetail(){
     payrollDetail = r;
     resultEl.textContent = `${r.employeeName} — ${r.employeeType} — ${r.records.length} lượt chấm công trong khoảng ngày này.${r.email ? '' : ' ⚠️ Nhân viên chưa có email trong hồ sơ, chưa gửi mail được.'}`;
     renderPayrollAttendance();
-    // reset các ô cộng/trừ mỗi lần tải lại
-    ['payrollBonusPerformance','payrollOvertimePay','payrollGasAllowance','payrollLunchAllowance','payrollResponsibilityAllowance','payrollUnpaidLeave','payrollAdvance','payrollLatePenalty'].forEach(id => document.getElementById(id).value = '');
+    // reset các ô cộng/trừ mỗi lần tải lại (trừ payrollOvertimePay — sẽ tự tính lại theo giờ tăng ca bên dưới)
+    ['payrollBonusPerformance','payrollGasAllowance','payrollLunchAllowance','payrollResponsibilityAllowance','payrollUnpaidLeave','payrollAdvance','payrollLatePenalty'].forEach(id => document.getElementById(id).value = '');
+    document.getElementById('payrollOtMultiplier').value = '';
     document.getElementById('payrollBasePay').textContent = Number(r.basePay).toLocaleString('vi-VN') + 'đ';
+    document.getElementById('payrollHoursSplit').textContent = `${r.regularHours || 0}h / ${r.otHours || 0}h`;
     document.getElementById('payrollAttendanceCard').style.display = 'block';
     document.getElementById('payrollCalcCard').style.display = 'block';
     document.getElementById('payrollSendResult').textContent = '';
-    recalcPayrollTotal();
+    recalcOvertimePay();
   } catch(err){
     resultEl.textContent = 'Lỗi: ' + err.message;
     document.getElementById('payrollAttendanceCard').style.display = 'none';
@@ -1214,8 +1223,12 @@ function renderPayrollAttendance(){
     </div>
   `).join('') + `
     <div class="delivered-row" style="border-top:2px solid var(--border);margin-top:4px;padding-top:10px;">
-      <div class="who" style="font-weight:800;">Tổng giờ công</div>
-      <div class="mono" style="font-weight:800;">${payrollDetail.totalHours}h</div>
+      <div class="who" style="font-weight:800;">Giờ chính thức</div>
+      <div class="mono" style="font-weight:800;">${payrollDetail.regularHours || 0}h</div>
+    </div>
+    <div class="delivered-row">
+      <div class="who" style="font-weight:800;">Giờ tăng ca đã duyệt</div>
+      <div class="mono" style="font-weight:800;">${payrollDetail.otHours || 0}h</div>
     </div>`;
 }
 
@@ -1231,6 +1244,17 @@ function recalcPayrollTotal(){
   document.getElementById('payrollTotalPay').textContent = total.toLocaleString('vi-VN') + 'đ';
 }
 
+// Tự tính lại "Làm thêm giờ" = giờ tăng ca đã duyệt × đơn giá/giờ × hệ số OT (chủ nhập tay, để trống = 1x).
+// Vẫn cho phép chủ sửa tay ô Làm thêm giờ sau khi tự tính nếu muốn điều chỉnh khác đi.
+function recalcOvertimePay(){
+  if(!payrollDetail) return;
+  const multRaw = String(document.getElementById('payrollOtMultiplier').value || '').replace(',', '.');
+  const mult = Number(multRaw) > 0 ? Number(multRaw) : 1;
+  const otPay = Math.round((payrollDetail.otHours || 0) * (payrollDetail.hourlyRate || 0) * mult);
+  document.getElementById('payrollOvertimePay').value = otPay ? formatVNMoney(otPay) : '';
+  recalcPayrollTotal();
+}
+
 function buildPayrollPayload_(){
   const add = {
     bonusPerformance: numVal_('payrollBonusPerformance'), overtimePay: numVal_('payrollOvertimePay'),
@@ -1240,10 +1264,13 @@ function buildPayrollPayload_(){
   const sub = { unpaidLeave: numVal_('payrollUnpaidLeave'), advance: numVal_('payrollAdvance'), latePenalty: numVal_('payrollLatePenalty') };
   const totalPay = (Number(payrollDetail.basePay)||0) + add.bonusPerformance + add.overtimePay + add.gasAllowance + add.lunchAllowance + add.responsibilityAllowance
     - sub.unpaidLeave - sub.advance - sub.latePenalty;
+  const multRaw = String(document.getElementById('payrollOtMultiplier').value || '').replace(',', '.');
+  const otMultiplier = Number(multRaw) > 0 ? Number(multRaw) : 1;
   return Object.assign({
     employeeId: payrollDetail.employeeId, employeeName: payrollDetail.employeeName, employeeType: payrollDetail.employeeType,
-    from: payrollDetail.from, to: payrollDetail.to, totalHours: payrollDetail.totalHours, basePay: payrollDetail.basePay,
-    totalPay, records: payrollDetail.records
+    from: payrollDetail.from, to: payrollDetail.to, totalHours: payrollDetail.totalHours,
+    regularHours: payrollDetail.regularHours, otHours: payrollDetail.otHours, otMultiplier,
+    basePay: payrollDetail.basePay, totalPay, records: payrollDetail.records
   }, add, sub);
 }
 
@@ -1302,7 +1329,7 @@ function renderPayrollHistory(rows){
         <div class="mono" style="font-weight:800;">${fmt(r.totalPay)}</div>
       </div>
       <div id="payrollHistoryDetail${i}" style="display:none;margin-top:10px;padding-top:10px;border-top:1px solid var(--border);font-size:12.5px;line-height:1.7;">
-        <div>Tổng giờ công: <b>${r.totalHours}h</b> — Lương cơ bản: <b>${fmt(r.basePay)}</b></div>
+        <div>Giờ chính thức: <b>${r.regularHours || 0}h</b> · Giờ tăng ca: <b>${r.otHours || 0}h</b>${r.otMultiplier ? ` (hệ số ${r.otMultiplier}x)` : ''} — Lương cơ bản: <b>${fmt(r.basePay)}</b></div>
         ${r.bonusPerformance ? `<div>+ Thưởng hiệu suất: ${fmt(r.bonusPerformance)}</div>` : ''}
         ${r.overtimePay ? `<div>+ Làm thêm giờ: ${fmt(r.overtimePay)}</div>` : ''}
         ${r.gasAllowance ? `<div>+ Hỗ trợ xăng ship đơn: ${fmt(r.gasAllowance)}</div>` : ''}
@@ -1379,8 +1406,10 @@ function exportPayrollCSV(){
     ['Nhân viên', p.employeeName],
     ['Loại hình', p.employeeType],
     ['Kỳ lương', `${p.from} - ${p.to}`],
-    ['Tổng giờ công', p.totalHours],
-    ['Lương cơ bản', p.basePay],
+    ['Giờ chính thức', p.regularHours],
+    ['Giờ tăng ca đã duyệt', p.otHours],
+    ['Hệ số lương tăng ca', p.otMultiplier],
+    ['Lương cơ bản (giờ chính thức)', p.basePay],
     ['Thưởng hiệu suất', p.bonusPerformance],
     ['Làm thêm giờ', p.overtimePay],
     ['Hỗ trợ xăng ship đơn', p.gasAllowance],
@@ -1611,6 +1640,7 @@ async function loadCheckInHistory(){
     lastChamCongRecords = r.records || [];
     renderChamCongHistoryList();
     renderLateSummary();
+    renderOvertimeSummary();
   } catch(err){
     el.innerHTML = `<div class="empty-state">Không tải được: ${err.message}</div>`;
   } finally{
@@ -1661,6 +1691,60 @@ function renderLateSummary(){
   }
 }
 
+// Tổng hợp giờ chính thức và giờ tăng ca ĐÃ DUYỆT trong khoảng ngày đang xem — tách riêng 2 số này để
+// không bị hiểu nhầm là gộp chung (giờ tăng ca chờ duyệt chưa tính vào đây, chỉ đếm số phút riêng để biết còn chờ xử lý).
+function renderOvertimeSummary(){
+  const el = document.getElementById('otSummaryWrap');
+  if(!currentUser){ el.innerHTML = ''; return; }
+
+  if(currentUser.role === 'Chu'){
+    const byEmp = {};
+    lastChamCongRecords.forEach(r => {
+      if(!byEmp[r.employeeName]) byEmp[r.employeeName] = { regular: 0, ot: 0, otPending: 0 };
+      byEmp[r.employeeName].regular += Number(r.totalHours) || 0;
+      if(r.overtimeMinutes){
+        if(r.overtimeApproved) byEmp[r.employeeName].ot += Number(r.overtimeMinutes) / 60;
+        else byEmp[r.employeeName].otPending += Number(r.overtimeMinutes);
+      }
+    });
+    const names = Object.keys(byEmp).sort((a,b) => byEmp[b].ot - byEmp[a].ot);
+    if(names.length === 0){ el.innerHTML = ''; return; }
+    el.innerHTML = `
+      <div style="font-weight:800;font-size:11.5px;color:var(--brand-dark);text-transform:uppercase;letter-spacing:.04em;margin-bottom:6px;">Tổng giờ công (chính thức / tăng ca)</div>
+      ${names.map(n => `
+        <div class="delivered-row">
+          <div class="who">${n}</div>
+          <div style="text-align:right;">
+            <div class="mono" style="font-weight:700;font-size:13px;">${Math.round(byEmp[n].regular*100)/100}h chính thức</div>
+            <div class="mono" style="font-weight:700;font-size:12px;color:var(--brand-dark);">${Math.round(byEmp[n].ot*100)/100}h tăng ca${byEmp[n].otPending ? ` · ${byEmp[n].otPending}p chờ duyệt` : ''}</div>
+          </div>
+        </div>
+      `).join('')}
+    `;
+  } else {
+    let regular = 0, ot = 0, otPending = 0;
+    lastChamCongRecords.forEach(r => {
+      regular += Number(r.totalHours) || 0;
+      if(r.overtimeMinutes){
+        if(r.overtimeApproved) ot += Number(r.overtimeMinutes) / 60;
+        else otPending += Number(r.overtimeMinutes);
+      }
+    });
+    el.innerHTML = `
+      <div class="row" style="gap:8px;">
+        <div class="stat-card" style="text-align:center;flex:1;">
+          <div class="num">${Math.round(regular*100)/100}h</div>
+          <div class="label">Giờ chính thức</div>
+        </div>
+        <div class="stat-card" style="text-align:center;flex:1;">
+          <div class="num" style="color:var(--brand-dark);">${Math.round(ot*100)/100}h</div>
+          <div class="label">Giờ tăng ca đã duyệt${otPending ? ` (còn ${otPending}p chờ duyệt)` : ''}</div>
+        </div>
+      </div>
+    `;
+  }
+}
+
 async function approveOvertime(id){
   if(!currentUser || currentUser.role !== 'Chu') return;
   if(!confirm('Xác nhận duyệt tăng ca cho ngày này? Số phút tăng ca sẽ được cộng vào giờ công để tính lương.')) return;
@@ -1670,6 +1754,7 @@ async function approveOvertime(id){
     const rec = lastChamCongRecords.find(r => r.id === id);
     if(rec) rec.overtimeApproved = true;
     renderChamCongHistoryList();
+    renderOvertimeSummary();
   } catch(err){
     alert('Không duyệt được: ' + err.message);
   } finally{
