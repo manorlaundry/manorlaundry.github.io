@@ -770,6 +770,32 @@
         </div>
       </div>
 
+      <h2 class="section-title">Quỹ tiền mặt tại tiệm</h2>
+      <div class="card">
+        <div class="row" style="justify-content:space-between;align-items:center;">
+          <span class="field-label" style="margin:0;">Số dư hiện tại</span>
+          <span class="mono" id="cashBalanceLabel" style="font-weight:800;font-size:18px;color:var(--brand-dark);">0đ</span>
+        </div>
+        <button class="btn btn-ghost btn-full btn-sm" style="margin-top:10px;" onclick="openCashAdjustPrompt()">Chỉnh số dư</button>
+
+        <label class="field-label" style="margin-top:14px;">Số tiền rút (VNĐ)</label>
+        <input type="text" inputmode="numeric" id="cashWithdrawAmount" placeholder="VD: 500.000">
+        <label class="field-label" style="margin-top:10px;">Ghi chú (tuỳ chọn)</label>
+        <input type="text" id="cashWithdrawNote" placeholder="VD: Rút về nộp ngân hàng">
+        <button class="btn btn-in btn-full" style="margin-top:12px;" onclick="sendCashWithdrawal()">💸 Rút tiền mặt</button>
+      </div>
+
+      <h2 class="section-title">Lịch sử rút tiền mặt</h2>
+      <div class="card">
+        <label class="field-label">Từ ngày</label>
+        <input type="text" id="cashWithdrawHistoryFrom" class="date-input-vn" readonly placeholder="dd/mm/yyyy">
+        <label class="field-label" style="margin-top:10px;">Đến ngày</label>
+        <input type="text" id="cashWithdrawHistoryTo" class="date-input-vn" readonly placeholder="dd/mm/yyyy">
+        <button class="btn btn-ghost btn-full btn-sm" style="margin-top:10px;" onclick="loadCashWithdrawHistory()">Xem</button>
+      </div>
+      <h2 class="section-title">Tổng đã rút: <span id="cashWithdrawTotalLabel">0đ</span></h2>
+      <div id="cashWithdrawHistoryResult"></div>
+
     </div>
 
     <!-- TAB: LƯƠNG (chỉ Chủ) -->
@@ -985,7 +1011,7 @@ function attachMoneyInput(id){
     el.value = digits ? formatVNMoney(digits) : '';
   });
 }
-['packageAmount','expenseAmount','payrollBonusPerformance','payrollOvertimePay','payrollGasAllowance','payrollLunchAllowance','payrollResponsibilityAllowance','payrollUnpaidLeave','payrollAdvance','payrollLatePenalty'].forEach(attachMoneyInput);
+['packageAmount','expenseAmount','payrollBonusPerformance','payrollOvertimePay','payrollGasAllowance','payrollLunchAllowance','payrollResponsibilityAllowance','payrollUnpaidLeave','payrollAdvance','payrollLatePenalty','cashWithdrawAmount'].forEach(attachMoneyInput);
 
 // ---------- lịch chọn ngày tự viết (dd/mm/yyyy cố định, không phụ thuộc ngôn ngữ trình duyệt) ----------
 // Input vẫn giữ id cũ và ".value" vẫn trả về đúng chuỗi ISO "yyyy-MM-dd" như input type=date trước đây
@@ -1103,12 +1129,12 @@ document.addEventListener('click', (e)=>{
   closeVNCalendar_();
 });
 
-['chamCongHistoryFrom','chamCongHistoryTo','traDoHistoryFrom','traDoHistoryTo','reportFrom','reportTo','expenseHistoryFrom','expenseHistoryTo','expenseDate','packageHistoryFrom','packageHistoryTo','payrollFrom','payrollTo'].forEach(makeVNDateInput_);
+['chamCongHistoryFrom','chamCongHistoryTo','traDoHistoryFrom','traDoHistoryTo','reportFrom','reportTo','expenseHistoryFrom','expenseHistoryTo','expenseDate','packageHistoryFrom','packageHistoryTo','payrollFrom','payrollTo','cashWithdrawHistoryFrom','cashWithdrawHistoryTo'].forEach(makeVNDateInput_);
 
 (function initDateInputs(){
   const d = new Date();
   const iso = dateToIso_(d);
-  ['chamCongHistoryFrom','chamCongHistoryTo','traDoHistoryFrom','traDoHistoryTo','reportFrom','reportTo','expenseHistoryFrom','expenseHistoryTo','expenseDate','packageHistoryFrom','packageHistoryTo'].forEach(id=>{
+  ['chamCongHistoryFrom','chamCongHistoryTo','traDoHistoryFrom','traDoHistoryTo','reportFrom','reportTo','expenseHistoryFrom','expenseHistoryTo','expenseDate','packageHistoryFrom','packageHistoryTo','cashWithdrawHistoryFrom','cashWithdrawHistoryTo'].forEach(id=>{
     const el = document.getElementById(id);
     if(el) el.value = iso;
   });
@@ -1374,7 +1400,7 @@ function switchTab(name){
   document.querySelectorAll('.view').forEach(v=>v.classList.remove('active'));
   document.getElementById('view-'+name).classList.add('active');
   document.querySelectorAll('.tab-btn').forEach(b=>b.classList.toggle('active', b.dataset.tab===name));
-  if(name==='baocao') renderReport();
+  if(name==='baocao'){ renderReport(); loadCashBalance(); }
   if(name==='donhang') refreshDonHangTab(null);
   if(name==='chamcong') refreshChamCongTab();
   if(name==='luong') initPayrollTab();
@@ -2447,6 +2473,91 @@ function renderExpenseList(){
           <button class="confirm-btn no" style="background:#FDECE6;color:var(--danger);" onclick="deleteExpense('${r.expenseId}')">Xoá</button>
         </div>` : ''}
       </div>
+    </div>
+  `).join('');
+}
+
+// ---------- quỹ tiền mặt tại tiệm ----------
+async function loadCashBalance(){
+  if(!currentUser) return;
+  try{
+    const r = await apiCall('getCashBalance', {});
+    document.getElementById('cashBalanceLabel').textContent = (r.balance || 0).toLocaleString('vi-VN')+'đ';
+  } catch(err){
+    document.getElementById('cashBalanceLabel').textContent = '—';
+  }
+}
+
+async function openCashAdjustPrompt(){
+  if(!currentUser) return;
+  const input = prompt('Nhập số dư tiền mặt thực tế tại tiệm (VNĐ):');
+  if(input === null) return;
+  const balance = parseInt(input.replace(/\D/g,''));
+  if(isNaN(balance)){ alert('Số dư không hợp lệ.'); return; }
+  showBusy('Đang cập nhật số dư...');
+  try{
+    await apiCall('setCashBalance', { balance });
+    loadCashBalance();
+  } catch(err){
+    alert('Không cập nhật được: ' + err.message);
+  } finally{
+    hideBusy();
+  }
+}
+
+async function sendCashWithdrawal(){
+  if(!currentUser) return;
+  const amount = parseInt(document.getElementById('cashWithdrawAmount').value.replace(/\D/g,'')) || 0;
+  if(!amount){ alert('Vui lòng nhập số tiền rút.'); return; }
+  const note = document.getElementById('cashWithdrawNote').value.trim();
+  showBusy('Đang lưu rút tiền mặt...');
+  try{
+    await apiCall('cashWithdrawal', { amount, note });
+    document.getElementById('cashWithdrawAmount').value = '';
+    document.getElementById('cashWithdrawNote').value = '';
+    loadCashBalance();
+    loadCashWithdrawHistory();
+  } catch(err){
+    alert('Không rút được: ' + err.message);
+  } finally{
+    hideBusy();
+  }
+}
+
+let lastCashWithdrawRows = [];
+async function loadCashWithdrawHistory(){
+  if(!currentUser) return;
+  const fromIso = document.getElementById('cashWithdrawHistoryFrom').value;
+  const toIso = document.getElementById('cashWithdrawHistoryTo').value;
+  const el = document.getElementById('cashWithdrawHistoryResult');
+  if(!fromIso || !toIso){ el.innerHTML = '<div class="empty-state">Vui lòng chọn khoảng ngày.</div>'; return; }
+  showBusy('Đang tải lịch sử rút tiền mặt...');
+  try{
+    const r = await apiCall('getCashWithdrawals', { from: toVNDate(fromIso), to: toVNDate(toIso) });
+    lastCashWithdrawRows = r.rows || [];
+    renderCashWithdrawList();
+  } catch(err){
+    el.innerHTML = `<div class="empty-state">Không tải được: ${err.message}</div>`;
+  } finally{
+    hideBusy();
+  }
+}
+
+function renderCashWithdrawList(){
+  const el = document.getElementById('cashWithdrawHistoryResult');
+  const total = lastCashWithdrawRows.reduce((s,r)=>s+(r.amount||0),0);
+  document.getElementById('cashWithdrawTotalLabel').textContent = total.toLocaleString('vi-VN')+'đ';
+  if(lastCashWithdrawRows.length === 0){
+    el.innerHTML = '<div class="empty-state">Không có lượt rút tiền mặt nào trong khoảng ngày này.</div>';
+    return;
+  }
+  el.innerHTML = lastCashWithdrawRows.map(r=>`
+    <div class="delivered-row">
+      <div>
+        <div class="who">${r.employeeName || ''}</div>
+        <div class="sub">${r.date}${r.time ? ' ' + r.time : ''}${r.note ? ' · '+r.note : ''}</div>
+      </div>
+      <div class="mono" style="font-weight:700;color:var(--danger);white-space:nowrap;">${(r.amount||0).toLocaleString('vi-VN')}đ</div>
     </div>
   `).join('');
 }
