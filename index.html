@@ -691,30 +691,34 @@
         </div>
       </div>
 
-      <h2 class="section-title">Lịch sử chi phí</h2>
-      <div class="card">
-        <label class="field-label">Từ ngày</label>
-        <input type="text" id="expenseHistoryFrom" class="date-input-vn" readonly placeholder="dd/mm/yyyy">
-        <label class="field-label" style="margin-top:10px;">Đến ngày</label>
-        <input type="text" id="expenseHistoryTo" class="date-input-vn" readonly placeholder="dd/mm/yyyy">
-        <label class="field-label" style="margin-top:10px;">Loại chi phí</label>
-        <select id="expenseCategoryFilter">
-          <option value="all">Tất cả danh mục</option>
-          <option>Nguyên vật liệu</option>
-          <option>Điện</option>
-          <option>Nước</option>
-          <option>Thuê mặt bằng</option>
-          <option>Bảo trì/sửa chữa máy</option>
-          <option>Vận chuyển</option>
-          <option>Thuê ngoài</option>
-          <option>Lương nhân viên</option>
-          <option>Khác</option>
-        </select>
-        <button class="btn btn-ghost btn-full btn-sm" style="margin-top:10px;" onclick="loadExpenseHistory()">Xem</button>
-      </div>
+      <!-- Lịch sử chi phí: chỉ tài khoản Chủ được xem (Cửa hàng trưởng chỉ được nhập chi phí mới ở trên),
+           ẩn/hiện toàn bộ khối này qua JS lúc đăng nhập (xem #expenseHistorySection trong doLogin). -->
+      <div id="expenseHistorySection">
+        <h2 class="section-title">Lịch sử chi phí</h2>
+        <div class="card">
+          <label class="field-label">Từ ngày</label>
+          <input type="text" id="expenseHistoryFrom" class="date-input-vn" readonly placeholder="dd/mm/yyyy">
+          <label class="field-label" style="margin-top:10px;">Đến ngày</label>
+          <input type="text" id="expenseHistoryTo" class="date-input-vn" readonly placeholder="dd/mm/yyyy">
+          <label class="field-label" style="margin-top:10px;">Loại chi phí</label>
+          <select id="expenseCategoryFilter">
+            <option value="all">Tất cả danh mục</option>
+            <option>Nguyên vật liệu</option>
+            <option>Điện</option>
+            <option>Nước</option>
+            <option>Thuê mặt bằng</option>
+            <option>Bảo trì/sửa chữa máy</option>
+            <option>Vận chuyển</option>
+            <option>Thuê ngoài</option>
+            <option>Lương nhân viên</option>
+            <option>Khác</option>
+          </select>
+          <button class="btn btn-ghost btn-full btn-sm" style="margin-top:10px;" onclick="loadExpenseHistory()">Xem</button>
+        </div>
 
-      <h2 class="section-title">Tổng chi phí: <span id="expenseTotalLabel">0đ</span></h2>
-      <div id="expenseHistoryResult"></div>
+        <h2 class="section-title">Tổng chi phí: <span id="expenseTotalLabel">0đ</span></h2>
+        <div id="expenseHistoryResult"></div>
+      </div>
     </div>
 
     <!-- TAB 5: BÁO CÁO -->
@@ -909,7 +913,17 @@
 const WEBAPP_URL = 'https://api-full-153135351147.asia-southeast1.run.app';
 
 // ---------- state ----------
-let currentUser = null; // {name, role, pin}
+let currentUser = null; // {name, role, pin, employeeType}
+
+// "Cửa hàng trưởng" = nhân viên (role NhanVien) có employeeType lưu trong Firestore là 'Full time'
+// (tên gọi nội bộ giữ nguyên 'Full time' để không phải đổi dữ liệu cũ — chỉ đổi TÊN HIỂN THỊ).
+function isStoreManager_(){
+  return !!currentUser && currentUser.role === 'NhanVien' && currentUser.employeeType === 'Full time';
+}
+// Hiển thị tên loại nhân viên ra tiếng Việt cho người dùng xem (không đổi giá trị lưu trong Firestore).
+function employeeTypeLabel_(t){
+  return t === 'Full time' ? 'Cửa hàng trưởng' : (t || 'Part time');
+}
 let pendingCheckType = null;
 
 // ---------- API helper ----------
@@ -941,13 +955,17 @@ async function doLogin(){
     });
     const json = await res.json();
     if(json.error){ errEl.textContent = json.error; return; }
-    currentUser = { name: json.name, role: json.role, pin };
+    currentUser = { name: json.name, role: json.role, pin, employeeType: json.employeeType || '' };
     document.getElementById('loginOverlay').style.display = 'none';
     document.getElementById('whoAmI').style.display = 'flex';
     document.getElementById('whoName').textContent = currentUser.name;
-    document.getElementById('whoRole').textContent = currentUser.role === 'Chu' ? 'Chủ' : 'Nhân viên';
+    document.getElementById('whoRole').textContent = currentUser.role === 'Chu' ? 'Chủ' : (isStoreManager_() ? 'Cửa hàng trưởng' : 'Nhân viên');
     document.querySelector('.tab-btn[data-tab="baocao"]').style.display = currentUser.role === 'Chu' ? 'flex' : 'none';
-    document.querySelector('.tab-btn[data-tab="chiphi"]').style.display = currentUser.role === 'Chu' ? 'flex' : 'none';
+    // Tab Chi phí: Chủ xem đầy đủ (nhập + lịch sử); Cửa hàng trưởng chỉ được nhập chi phí mới
+    // (phần lịch sử bị ẩn riêng bên dưới, xem #expenseHistorySection).
+    document.querySelector('.tab-btn[data-tab="chiphi"]').style.display = (currentUser.role === 'Chu' || isStoreManager_()) ? 'flex' : 'none';
+    const expenseHistorySection = document.getElementById('expenseHistorySection');
+    if(expenseHistorySection) expenseHistorySection.style.display = currentUser.role === 'Chu' ? '' : 'none';
     document.querySelector('.tab-btn[data-tab="luong"]').style.display = currentUser.role === 'Chu' ? 'flex' : 'none';
     document.getElementById('chamCongHistoryTitle').textContent = currentUser.role === 'Chu' ? 'Lịch sử chấm công' : 'Lịch sử chấm công của bạn';
     document.getElementById('myStatusCard').style.display = currentUser.role === 'Chu' ? 'none' : 'block';
@@ -1166,7 +1184,7 @@ async function initPayrollTab(){
       // Tài khoản Chủ không phải nhân viên được trả lương theo giờ công — không cần hiện trong
       // danh sách chọn nhân viên để tính lương.
       const employees = (r.employees || []).filter(e => !e.isOwnerAccount);
-      sel.innerHTML = employees.map(e => `<option value="${e.employeeId}">${e.name} (${e.employeeType || 'Part time'})</option>`).join('')
+      sel.innerHTML = employees.map(e => `<option value="${e.employeeId}">${e.name} (${employeeTypeLabel_(e.employeeType)})</option>`).join('')
         || '<option value="">Chưa có nhân viên</option>';
       sel.dataset.loaded = '1';
     } catch(err){
@@ -1194,7 +1212,7 @@ async function loadPayrollDetail(){
   try{
     const r = await apiCall('getPayrollDetail', { employeeId, from: toVNDate(fromIso), to: toVNDate(toIso) });
     payrollDetail = r;
-    resultEl.textContent = `${r.employeeName} — ${r.employeeType} — ${r.records.length} lượt chấm công trong khoảng ngày này.${r.email ? '' : ' ⚠️ Nhân viên chưa có email trong hồ sơ, chưa gửi mail được.'}`;
+    resultEl.textContent = `${r.employeeName} — ${employeeTypeLabel_(r.employeeType)} — ${r.records.length} lượt chấm công trong khoảng ngày này.${r.email ? '' : ' ⚠️ Nhân viên chưa có email trong hồ sơ, chưa gửi mail được.'}`;
     renderPayrollAttendance();
     // reset các ô cộng/trừ mỗi lần tải lại (trừ payrollOvertimePay — sẽ tự tính lại theo giờ tăng ca bên dưới)
     ['payrollBonusPerformance','payrollGasAllowance','payrollLunchAllowance','payrollResponsibilityAllowance','payrollUnpaidLeave','payrollAdvance','payrollLatePenalty'].forEach(id => document.getElementById(id).value = '');
@@ -1411,7 +1429,7 @@ function exportPayrollCSV(){
   const headers = ['Mục','Số tiền'];
   const rows = [
     ['Nhân viên', p.employeeName],
-    ['Loại hình', p.employeeType],
+    ['Loại hình', employeeTypeLabel_(p.employeeType)],
     ['Kỳ lương', `${p.from} - ${p.to}`],
     ['Giờ chính thức', p.regularHours],
     ['Giờ tăng ca đã duyệt', p.otHours],
@@ -1432,7 +1450,9 @@ function exportPayrollCSV(){
 
 // ---------- tabs ----------
 function switchTab(name){
-  if((name==='baocao' || name==='chiphi' || name==='luong') && (!currentUser || currentUser.role!=='Chu')) return;
+  if((name==='baocao' || name==='luong') && (!currentUser || currentUser.role!=='Chu')) return;
+  // Tab Chi phí: Chủ hoặc Cửa hàng trưởng (nhân viên Full time) mới được vào.
+  if(name==='chiphi' && (!currentUser || (currentUser.role!=='Chu' && !isStoreManager_()))) return;
   document.querySelectorAll('.view').forEach(v=>v.classList.remove('active'));
   document.getElementById('view-'+name).classList.add('active');
   document.querySelectorAll('.tab-btn').forEach(b=>b.classList.toggle('active', b.dataset.tab===name));
@@ -2278,8 +2298,7 @@ function sendReturnNotice(){
   // chỉ rollback + báo lỗi nếu API thất bại.
   let tempId = '';
   if(isEdit){
-    const row = lastDeliveredNotices.find(x => x.orderId === editId);
-    if(row){ row.customer = customer; row.amount = amount; row.method = method; row.deliveryMethod = deliveryMethod; }
+    patchDeliveredNoticeLocal_(editId, { customer, amount, method, deliveryMethod });
     renderDeliveredList();
   } else if(!currentDeliveredRange){
     // Chỉ chèn thẻ tạm khi đang xem "hôm nay" (đơn mới luôn thuộc hôm nay).
@@ -2312,12 +2331,14 @@ function sendReturnNotice(){
 
   apiCall(action, params).then(() => {
     refreshDonHangTab();
+    if(deliveredFilter === 'unconfirmed') loadUnpaidNotices();
   }).catch(err => {
     if(tempId){
       const t = document.getElementById(tempId);
       if(t) t.remove();
     } else {
       refreshDonHangTab(); // hoàn tác thay đổi sửa lạc quan bằng cách tải lại dữ liệu thật
+      if(deliveredFilter === 'unconfirmed') loadUnpaidNotices();
     }
     alert('Không lưu được thông báo: ' + err.message);
   });
@@ -2327,7 +2348,7 @@ function sendReturnNotice(){
 // Sửa thông báo đã có KHÔNG cần chọn lại đơn đóng gói (đây là sửa giao dịch đã chốt, không phải tạo mới) —
 // nên chuyển sang hiện ô tên khách hàng dạng chữ tự do, ẩn phần chọn đóng gói đi.
 function editReturnNotice(orderId){
-  const o = lastDeliveredNotices.find(x => x.orderId === orderId);
+  const o = activeDeliveredNotices_().find(x => x.orderId === orderId);
   if(!o) return;
   editingOrderId = orderId;
   document.getElementById('packagePickerWrap').style.display = 'none';
@@ -2365,15 +2386,18 @@ function deleteReturnNotice(orderId){
   if(!confirm('Xoá thông báo trả đồ này?')) return;
   if(editingOrderId === orderId) cancelReturnNoticeEdit();
 
-  // Optimistic UI: xoá khỏi danh sách hiển thị ngay, gọi API ngầm phía sau — nếu lỗi thì tải lại
-  // dữ liệu thật để phục hồi.
+  // Optimistic UI: xoá khỏi danh sách hiển thị ngay (cả 2 danh sách cục bộ), gọi API ngầm phía
+  // sau — nếu lỗi thì tải lại dữ liệu thật để phục hồi.
   lastDeliveredNotices = lastDeliveredNotices.filter(x => x.orderId !== orderId);
+  lastUnpaidNotices = lastUnpaidNotices.filter(x => x.orderId !== orderId);
   renderDeliveredList();
 
   apiCall('deleteReturnNotice', { orderId }).then(() => {
     refreshDonHangTab();
+    if(deliveredFilter === 'unconfirmed') loadUnpaidNotices();
   }).catch(err => {
     refreshDonHangTab();
+    if(deliveredFilter === 'unconfirmed') loadUnpaidNotices();
     alert('Không xoá được: ' + err.message);
   });
 }
@@ -2381,21 +2405,61 @@ function deleteReturnNotice(orderId){
 // ---------- đã trả đồ hôm nay ----------
 let currentDeliveredRange = null; // {from,to} hoặc null (nghĩa là hôm nay)
 let deliveredFilter = 'all'; // 'all' | 'unconfirmed'
-let lastDeliveredNotices = [];
+let lastDeliveredNotices = []; // danh sách theo khoảng ngày đang xem (filter "Tất cả")
+let lastUnpaidNotices = []; // TOÀN BỘ đơn chưa thanh toán, không phụ thuộc ngày (filter "Chưa thanh toán")
 let lastDeliveredIsOwner = false;
+
+// Danh sách đang thực sự hiển thị, tuỳ theo filter hiện tại.
+function activeDeliveredNotices_(){
+  return deliveredFilter === 'unconfirmed' ? lastUnpaidNotices : lastDeliveredNotices;
+}
+// Cập nhật 1 đơn ở cả 2 danh sách cục bộ (đơn có thể xuất hiện đồng thời ở cả 2, tuỳ ngày) để
+// UI luôn nhất quán dù đang xem filter nào.
+function patchDeliveredNoticeLocal_(orderId, patch){
+  [lastDeliveredNotices, lastUnpaidNotices].forEach(arr => {
+    const row = arr.find(x => x.orderId === orderId);
+    if(row) Object.assign(row, patch);
+  });
+}
 
 async function renderDeliveredOrders(rangeOverride, dataOverride){
   if(!currentUser) return;
   currentDeliveredRange = rangeOverride || null;
   const el = document.getElementById('deliveredList');
-  const titleEl = document.getElementById('deliveredListTitle');
   try{
     const params = rangeOverride ? { from: rangeOverride.from, to: rangeOverride.to } : {};
     const r = dataOverride || await apiCall('getReturnNotices', params);
-    if(titleEl) titleEl.textContent = rangeOverride
-      ? (rangeOverride.from === rangeOverride.to ? `Đã trả đồ ngày ${rangeOverride.from}` : `Đã trả đồ ${rangeOverride.from} - ${rangeOverride.to}`)
-      : 'Đã trả đồ hôm nay';
     lastDeliveredNotices = r.notices || [];
+    lastDeliveredIsOwner = r.isOwner;
+    if(deliveredFilter === 'unconfirmed'){
+      // Đang xem "Chưa thanh toán" (không phụ thuộc ngày) -> nạp lại danh sách chưa thanh toán riêng.
+      loadUnpaidNotices();
+    } else {
+      updateDeliveredListTitle_();
+      renderDeliveredList();
+    }
+  } catch(err){
+    el.innerHTML = `<div class="empty-state">Không tải được: ${err.message}</div>`;
+  }
+}
+
+function updateDeliveredListTitle_(){
+  const titleEl = document.getElementById('deliveredListTitle');
+  if(!titleEl) return;
+  titleEl.textContent = currentDeliveredRange
+    ? (currentDeliveredRange.from === currentDeliveredRange.to ? `Đã trả đồ ngày ${currentDeliveredRange.from}` : `Đã trả đồ ${currentDeliveredRange.from} - ${currentDeliveredRange.to}`)
+    : 'Đã trả đồ hôm nay';
+}
+
+// Lấy TOÀN BỘ đơn chưa thanh toán trong toàn hệ thống (không giới hạn theo ngày đang chọn) —
+// áp dụng cho mọi loại tài khoản (Chủ và Nhân viên).
+async function loadUnpaidNotices(){
+  const el = document.getElementById('deliveredList');
+  const titleEl = document.getElementById('deliveredListTitle');
+  if(titleEl) titleEl.textContent = 'Tất cả đơn chưa thanh toán';
+  try{
+    const r = await apiCall('getReturnNotices', { filter: 'unconfirmed' });
+    lastUnpaidNotices = r.notices || [];
     lastDeliveredIsOwner = r.isOwner;
     renderDeliveredList();
   } catch(err){
@@ -2407,14 +2471,17 @@ function setDeliveredFilter(f){
   deliveredFilter = f;
   document.getElementById('filterAllBtn').classList.toggle('selected', f==='all');
   document.getElementById('filterUnconfirmedBtn').classList.toggle('selected', f==='unconfirmed');
-  renderDeliveredList();
+  if(f === 'unconfirmed'){
+    loadUnpaidNotices();
+  } else {
+    updateDeliveredListTitle_();
+    renderDeliveredList();
+  }
 }
 
 function renderDeliveredList(){
   const el = document.getElementById('deliveredList');
-  const notices = deliveredFilter==='unconfirmed'
-    ? lastDeliveredNotices.filter(o=>!o.confirmed)
-    : lastDeliveredNotices;
+  const notices = activeDeliveredNotices_();
 
   if(notices.length===0){
     el.innerHTML = deliveredFilter==='unconfirmed'
@@ -2448,13 +2515,19 @@ function renderDeliveredList(){
 function toggleConfirm(orderId, newVal){
   // Optimistic UI: đổi trạng thái ngay trên giao diện, gọi API ngầm phía sau — rollback lại +
   // báo lỗi nếu API thất bại.
-  const row = lastDeliveredNotices.find(x => x.orderId === orderId);
+  const row = activeDeliveredNotices_().find(x => x.orderId === orderId);
   const prevVal = row ? row.confirmed : null;
-  if(row){ row.confirmed = newVal; }
+  patchDeliveredNoticeLocal_(orderId, { confirmed: newVal });
   renderDeliveredList();
 
-  apiCall('confirmPayment', { orderId, confirmed: newVal }).catch(err => {
-    if(row){ row.confirmed = prevVal; }
+  apiCall('confirmPayment', { orderId, confirmed: newVal }).then(() => {
+    // Đơn vừa được xác nhận đã thanh toán thì không còn thuộc danh sách "chưa thanh toán" nữa.
+    if(newVal){
+      lastUnpaidNotices = lastUnpaidNotices.filter(x => x.orderId !== orderId);
+      if(deliveredFilter === 'unconfirmed') renderDeliveredList();
+    }
+  }).catch(err => {
+    patchDeliveredNoticeLocal_(orderId, { confirmed: prevVal });
     renderDeliveredList();
     alert('Không xác nhận được: ' + err.message);
   });
@@ -2498,20 +2571,11 @@ async function renderReport(rangeOverride){
   }
 }
 
-// Bấm vào thẻ "chưa xác nhận" ở Báo cáo -> nhảy sang tab Trả đồ, tự lọc đúng khoảng ngày đang xem + trạng thái chưa xác nhận.
+// Bấm vào thẻ "chưa xác nhận" ở Báo cáo -> nhảy sang tab Trả đồ, hiện toàn bộ đơn chưa thanh toán
+// (không giới hạn theo ngày đang xem ở Báo cáo — "chưa thanh toán" luôn là toàn bộ, mọi thời điểm).
 function goToUnconfirmed(){
-  const rangeToUse = reportCurrentRange;
   switchTab('donhang');
-  if(rangeToUse){
-    const [d1,m1,y1] = rangeToUse.from.split('/');
-    const [d2,m2,y2] = rangeToUse.to.split('/');
-    const fromInput = document.getElementById('traDoHistoryFrom');
-    const toInput = document.getElementById('traDoHistoryTo');
-    if(fromInput) fromInput.value = `${y1}-${m1}-${d1}`;
-    if(toInput) toInput.value = `${y2}-${m2}-${d2}`;
-  }
   setDeliveredFilter('unconfirmed');
-  renderDeliveredOrders(rangeToUse);
 }
 
 // Bấm vào thẻ "nhân viên đi muộn" ở Báo cáo -> nhảy sang tab Chấm công, tự lọc đúng khoảng ngày đang xem + trạng thái đi muộn.
@@ -2581,7 +2645,9 @@ async function sendExpense(){
       await apiCall('createExpense', { date, category, amount, note });
     }
     cancelExpenseEdit();
-    loadExpenseHistory();
+    // Lịch sử chi phí chỉ tài khoản Chủ mới xem được (Cửa hàng trưởng chỉ nhập, không xem lại được).
+    if(currentUser.role === 'Chu') loadExpenseHistory();
+    else alert(editingExpenseId ? 'Đã cập nhật chi phí.' : 'Đã lưu chi phí.');
   } catch(err){
     alert('Không lưu được chi phí: ' + err.message);
   } finally{
