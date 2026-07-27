@@ -918,7 +918,7 @@ let currentUser = null; // {name, role, pin, employeeType}
 // "Cửa hàng trưởng" = nhân viên (role NhanVien) có employeeType lưu trong Firestore là 'Full time'
 // (tên gọi nội bộ giữ nguyên 'Full time' để không phải đổi dữ liệu cũ — chỉ đổi TÊN HIỂN THỊ).
 function isStoreManager_(){
-  return !!currentUser && currentUser.role === 'NhanVien' && currentUser.employeeType === 'Full time';
+  return !!currentUser && currentUser.role !== 'Chu' && currentUser.employeeType === 'Full time';
 }
 // Hiển thị tên loại nhân viên ra tiếng Việt cho người dùng xem (không đổi giá trị lưu trong Firestore).
 function employeeTypeLabel_(t){
