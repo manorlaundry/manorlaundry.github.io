@@ -2050,9 +2050,10 @@ function sendPackage(){
       row.innerHTML = `
         <div>
           <div class="who">${customer}</div>
-          <div class="sub">${todayVNClient_()} · ${amount.toLocaleString('vi-VN')}đ · đang lưu...</div>
+          <div class="sub">${todayVNClient_()} · đang lưu...</div>
         </div>
         <div style="display:flex;flex-direction:column;align-items:flex-end;gap:6px;">
+          <div class="mono" style="font-weight:800;font-size:15px;color:var(--brand-dark);white-space:nowrap;">${amount.toLocaleString('vi-VN')}đ</div>
           <span class="method-tag">Chưa trả đồ</span>
         </div>`;
       el.prepend(row);
@@ -2197,9 +2198,10 @@ function renderPackageHistoryList(){
     <div class="delivered-row">
       <div>
         <div class="who">${p.customer}</div>
-        <div class="sub">${p.date}${p.time ? ' '+p.time : ''} · ${p.amount.toLocaleString('vi-VN')}đ${p.billUrl ? ` · <a href="${p.billUrl}" target="_blank">Xem bill</a>` : ''}${p.employeeName ? ' · NV: '+p.employeeName : ''}</div>
+        <div class="sub">${p.date}${p.time ? ' '+p.time : ''}${p.billUrl ? ` · <a href="${p.billUrl}" target="_blank">Xem bill</a>` : ''}${p.employeeName ? ' · NV: '+p.employeeName : ''}</div>
       </div>
       <div style="display:flex;flex-direction:column;align-items:flex-end;gap:6px;">
+        <div class="mono" style="font-weight:800;font-size:15px;color:var(--brand-dark);white-space:nowrap;">${p.amount.toLocaleString('vi-VN')}đ</div>
         <span class="method-tag" style="${p.delivered ? 'background:#E4F3EC;color:var(--brand-dark);' : ''}">${p.delivered ? 'Đã trả đồ' : 'Chưa trả đồ'}</span>
         ${isOwner ? `<div style="display:flex;gap:6px;">
           <button class="confirm-btn no" onclick="editPackage('${p.packageId}')">Sửa</button>
@@ -2321,9 +2323,10 @@ function sendReturnNotice(){
       row.innerHTML = `
         <div>
           <div class="who">${customer}</div>
-          <div class="sub">${todayVNClient_()} · ${amount.toLocaleString('vi-VN')}đ · đang gửi...</div>
+          <div class="sub">${todayVNClient_()} · đang gửi...</div>
         </div>
         <div style="display:flex;flex-direction:column;align-items:flex-end;gap:6px;">
+          <div class="mono" style="font-weight:800;font-size:15px;color:var(--brand-dark);white-space:nowrap;">${amount.toLocaleString('vi-VN')}đ</div>
           <span class="method-tag">${deliveryMethod}</span>
           <span class="method-tag">${method}</span>
         </div>`;
@@ -2501,9 +2504,10 @@ function renderDeliveredList(){
     <div class="delivered-row">
       <div>
         <div class="who">${o.customer}</div>
-        <div class="sub">${o.date}${o.time ? ' '+o.time : ''} · ${o.amount.toLocaleString('vi-VN')}đ${o.billUrl ? ` · <a href="${o.billUrl}" target="_blank">Xem bill</a>` : ''}${o.employeeName ? ` · NV: ${o.employeeName}` : ''}</div>
+        <div class="sub">${o.date}${o.time ? ' '+o.time : ''}${o.billUrl ? ` · <a href="${o.billUrl}" target="_blank">Xem bill</a>` : ''}${o.employeeName ? ` · NV: ${o.employeeName}` : ''}</div>
       </div>
       <div style="display:flex; flex-direction:column; align-items:flex-end; gap:6px;">
+        <div class="mono" style="font-weight:800;font-size:15px;color:var(--brand-dark);white-space:nowrap;">${o.amount.toLocaleString('vi-VN')}đ</div>
         <div style="display:flex; align-items:center; gap:8px;">
           ${o.deliveryMethod ? `<span class="method-tag">${o.deliveryMethod}</span>` : ''}
           ${o.method ? `<span class="method-tag">${o.method}</span>` : ''}
