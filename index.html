@@ -682,6 +682,14 @@
         <label class="field-label" style="margin-top:12px;">Số tiền (VNĐ)</label>
         <input type="text" inputmode="numeric" id="expenseAmount" placeholder="VD: 500.000">
 
+        <!-- Nguồn tiền chi trả: nếu chọn Tiền mặt, số tiền này sẽ trừ thẳng vào quỹ tiền mặt tại tiệm
+             (xem selectExpenseMethod() và backend adjustCashLedger_ trong handleCreateExpense/handleUpdateExpense). -->
+        <label class="field-label" style="margin-top:12px;">Nguồn tiền chi trả</label>
+        <div class="row" style="gap:8px;">
+          <button type="button" class="btn btn-ghost btn-full method-btn" id="expenseMethodCashBtn" onclick="selectExpenseMethod('Tiền mặt')">💵 Tiền mặt</button>
+          <button type="button" class="btn btn-ghost btn-full method-btn" id="expenseMethodTransferBtn" onclick="selectExpenseMethod('Chuyển khoản')">🏦 Chuyển khoản</button>
+        </div>
+
         <label class="field-label" style="margin-top:12px;">Chi tiết</label>
         <input type="text" id="expenseNote" placeholder="VD: Mua bột giặt Omo 5kg x10 gói">
 
@@ -2627,6 +2635,13 @@ function goToExpenseList(){
 
 // ---------- chi phí ----------
 let editingExpenseId = null;
+let selectedExpenseMethod = null; // 'Tiền mặt' | 'Chuyển khoản' — chi bằng tiền mặt sẽ trừ luôn vào quỹ tiền mặt tại tiệm.
+
+function selectExpenseMethod(m){
+  selectedExpenseMethod = m;
+  document.getElementById('expenseMethodCashBtn').classList.toggle('selected', m==='Tiền mặt');
+  document.getElementById('expenseMethodTransferBtn').classList.toggle('selected', m==='Chuyển khoản');
+}
 
 async function sendExpense(){
   if(!currentUser){ alert('Vui lòng đăng nhập trước.'); return; }
@@ -2634,19 +2649,24 @@ async function sendExpense(){
   const category = document.getElementById('expenseCategory').value;
   const amount = parseInt(document.getElementById('expenseAmount').value.replace(/\D/g,'')) || 0;
   if(!amount){ alert('Vui lòng nhập số tiền.'); return; }
+  if(!selectedExpenseMethod){ alert('Vui lòng chọn nguồn tiền chi trả.'); return; }
+  const method = selectedExpenseMethod;
   const note = document.getElementById('expenseNote').value.trim();
   const date = dateIso ? toVNDate(dateIso) : undefined;
 
   showBusy(editingExpenseId ? 'Đang cập nhật chi phí...' : 'Đang lưu chi phí...');
   try{
     if(editingExpenseId){
-      await apiCall('updateExpense', { expenseId: editingExpenseId, date, category, amount, note });
+      await apiCall('updateExpense', { expenseId: editingExpenseId, date, category, amount, method, note });
     } else {
-      await apiCall('createExpense', { date, category, amount, note });
+      await apiCall('createExpense', { date, category, amount, method, note });
     }
     cancelExpenseEdit();
     // Lịch sử chi phí chỉ tài khoản Chủ mới xem được (Cửa hàng trưởng chỉ nhập, không xem lại được).
-    if(currentUser.role === 'Chu') loadExpenseHistory();
+    if(currentUser.role === 'Chu'){
+      loadExpenseHistory();
+      loadCashBalance(); // chi tiền mặt vừa trừ vào quỹ -> làm mới số dư hiển thị nếu Chủ đang xem tab Báo cáo.
+    }
     else alert(editingExpenseId ? 'Đã cập nhật chi phí.' : 'Đã lưu chi phí.');
   } catch(err){
     alert('Không lưu được chi phí: ' + err.message);
@@ -2664,6 +2684,7 @@ function editExpense(expenseId){
   document.getElementById('expenseCategory').value = r.category;
   document.getElementById('expenseAmount').value = formatVNMoney(r.amount);
   document.getElementById('expenseNote').value = r.note || '';
+  selectExpenseMethod(r.method || 'Chuyển khoản');
   document.getElementById('expenseFormTitle').textContent = 'Sửa chi phí';
   document.getElementById('expenseSaveBtn').textContent = 'Cập nhật chi phí';
   document.getElementById('expenseCancelBtn').style.display = 'flex';
@@ -2678,6 +2699,9 @@ function cancelExpenseEdit(){
   document.getElementById('expenseCancelBtn').style.display = 'none';
   document.getElementById('expenseAmount').value = '';
   document.getElementById('expenseNote').value = '';
+  selectedExpenseMethod = null;
+  document.getElementById('expenseMethodCashBtn').classList.remove('selected');
+  document.getElementById('expenseMethodTransferBtn').classList.remove('selected');
   const d = new Date();
   document.getElementById('expenseDate').value = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
 }
@@ -2732,7 +2756,7 @@ function renderExpenseList(){
     <div class="delivered-row">
       <div>
         <div class="who">${r.category}</div>
-        <div class="sub">${r.date}${r.note ? ' · '+r.note : ''}${r.employeeName ? ' · '+r.employeeName : ''}</div>
+        <div class="sub">${r.date}${r.method ? ' · '+r.method : ''}${r.note ? ' · '+r.note : ''}${r.employeeName ? ' · '+r.employeeName : ''}</div>
       </div>
       <div style="display:flex;flex-direction:column;align-items:flex-end;gap:5px;">
         <div class="mono" style="font-weight:700;color:var(--danger);white-space:nowrap;">${(r.amount||0).toLocaleString('vi-VN')}đ</div>
