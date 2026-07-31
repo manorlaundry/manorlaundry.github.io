@@ -969,11 +969,11 @@ async function doLogin(){
     document.getElementById('whoName').textContent = currentUser.name;
     document.getElementById('whoRole').textContent = currentUser.role === 'Chu' ? 'Chủ' : (isStoreManager_() ? 'Cửa hàng trưởng' : 'Nhân viên');
     document.querySelector('.tab-btn[data-tab="baocao"]').style.display = currentUser.role === 'Chu' ? 'flex' : 'none';
-    // Tab Chi phí: Chủ xem đầy đủ (nhập + lịch sử); Cửa hàng trưởng chỉ được nhập chi phí mới
-    // (phần lịch sử bị ẩn riêng bên dưới, xem #expenseHistorySection).
+    // Tab Chi phí: Chủ và Cửa hàng trưởng đều xem đầy đủ (nhập + lịch sử) và được Sửa; nút Xoá
+    // trong lịch sử vẫn chỉ dành cho Chủ (xem renderExpenseList).
     document.querySelector('.tab-btn[data-tab="chiphi"]').style.display = (currentUser.role === 'Chu' || isStoreManager_()) ? 'flex' : 'none';
     const expenseHistorySection = document.getElementById('expenseHistorySection');
-    if(expenseHistorySection) expenseHistorySection.style.display = currentUser.role === 'Chu' ? '' : 'none';
+    if(expenseHistorySection) expenseHistorySection.style.display = (currentUser.role === 'Chu' || isStoreManager_()) ? '' : 'none';
     document.querySelector('.tab-btn[data-tab="luong"]').style.display = currentUser.role === 'Chu' ? 'flex' : 'none';
     document.getElementById('chamCongHistoryTitle').textContent = currentUser.role === 'Chu' ? 'Lịch sử chấm công' : 'Lịch sử chấm công của bạn';
     document.getElementById('myStatusCard').style.display = currentUser.role === 'Chu' ? 'none' : 'block';
@@ -2188,6 +2188,8 @@ function renderPackageHistoryList(){
   // pendingPackages (đã tải sẵn, dùng chung với bộ chọn khách hàng ở tab Trả đồ) thay vì lastPackageRows.
   const rows = packageFilter === 'pending' ? pendingPackages : lastPackageRows;
   const isOwner = currentUser && currentUser.role === 'Chu';
+  // Cửa hàng trưởng được SỬA nhưng không được XOÁ đơn đóng gói.
+  const canEdit = isOwner || isStoreManager_();
   if(rows.length === 0){
     el.innerHTML = packageFilter === 'pending'
       ? '<div class="empty-state">Không có đơn nào chưa trả.</div>'
@@ -2203,9 +2205,9 @@ function renderPackageHistoryList(){
       <div style="display:flex;flex-direction:column;align-items:flex-end;gap:6px;">
         <div class="mono" style="font-weight:800;font-size:15px;color:var(--brand-dark);white-space:nowrap;">${p.amount.toLocaleString('vi-VN')}đ</div>
         <span class="method-tag" style="${p.delivered ? 'background:#E4F3EC;color:var(--brand-dark);' : ''}">${p.delivered ? 'Đã trả đồ' : 'Chưa trả đồ'}</span>
-        ${isOwner ? `<div style="display:flex;gap:6px;">
+        ${canEdit ? `<div style="display:flex;gap:6px;">
           <button class="confirm-btn no" onclick="editPackage('${p.packageId}')">Sửa</button>
-          <button class="confirm-btn no" style="background:#FDECE6;color:var(--danger);" onclick="deletePackage('${p.packageId}')">Xoá</button>
+          ${isOwner ? `<button class="confirm-btn no" style="background:#FDECE6;color:var(--danger);" onclick="deletePackage('${p.packageId}')">Xoá</button>` : ''}
         </div>` : ''}
       </div>
     </div>
@@ -2419,6 +2421,7 @@ let deliveredFilter = 'all'; // 'all' | 'unconfirmed'
 let lastDeliveredNotices = []; // danh sách theo khoảng ngày đang xem (filter "Tất cả")
 let lastUnpaidNotices = []; // TOÀN BỘ đơn chưa thanh toán, không phụ thuộc ngày (filter "Chưa thanh toán")
 let lastDeliveredIsOwner = false;
+let lastDeliveredCanEdit = false; // Chủ hoặc Cửa hàng trưởng — được Sửa (không được Xoá)
 
 // Danh sách đang thực sự hiển thị, tuỳ theo filter hiện tại.
 function activeDeliveredNotices_(){
@@ -2442,6 +2445,7 @@ async function renderDeliveredOrders(rangeOverride, dataOverride){
     const r = dataOverride || await apiCall('getReturnNotices', params);
     lastDeliveredNotices = r.notices || [];
     lastDeliveredIsOwner = r.isOwner;
+    lastDeliveredCanEdit = r.canEdit;
     if(deliveredFilter === 'unconfirmed'){
       // Đang xem "Chưa thanh toán" (không phụ thuộc ngày) -> nạp lại danh sách chưa thanh toán riêng.
       loadUnpaidNotices();
@@ -2472,6 +2476,7 @@ async function loadUnpaidNotices(){
     const r = await apiCall('getReturnNotices', { filter: 'unconfirmed' });
     lastUnpaidNotices = r.notices || [];
     lastDeliveredIsOwner = r.isOwner;
+    lastDeliveredCanEdit = r.canEdit;
     renderDeliveredList();
   } catch(err){
     el.innerHTML = `<div class="empty-state">Không tải được: ${err.message}</div>`;
@@ -2515,9 +2520,9 @@ function renderDeliveredList(){
             ${o.confirmed ? 'Đã thanh toán ✓' : 'Chờ thanh toán'}
           </button>` : (o.confirmed ? '<span class="method-tag" style="background:#E4F3EC;color:var(--brand-dark);">Đã thanh toán</span>' : '<span class="method-tag">Chờ thanh toán</span>')}
         </div>
-        ${lastDeliveredIsOwner ? `<div style="display:flex;gap:6px;">
+        ${lastDeliveredCanEdit ? `<div style="display:flex;gap:6px;">
           <button class="confirm-btn no" onclick="editReturnNotice('${o.orderId}')">Sửa</button>
-          <button class="confirm-btn no" style="background:#FDECE6;color:var(--danger);" onclick="deleteReturnNotice('${o.orderId}')">Xoá</button>
+          ${lastDeliveredIsOwner ? `<button class="confirm-btn no" style="background:#FDECE6;color:var(--danger);" onclick="deleteReturnNotice('${o.orderId}')">Xoá</button>` : ''}
         </div>` : ''}
       </div>
     </div>
@@ -2666,12 +2671,11 @@ async function sendExpense(){
       await apiCall('createExpense', { date, category, amount, method, note });
     }
     cancelExpenseEdit();
-    // Lịch sử chi phí chỉ tài khoản Chủ mới xem được (Cửa hàng trưởng chỉ nhập, không xem lại được).
+    // Chủ và Cửa hàng trưởng đều xem được lịch sử chi phí (để Cửa hàng trưởng có thể sửa lại nếu cần).
+    loadExpenseHistory();
     if(currentUser.role === 'Chu'){
-      loadExpenseHistory();
       loadCashBalance(); // chi tiền mặt vừa trừ vào quỹ -> làm mới số dư hiển thị nếu Chủ đang xem tab Báo cáo.
     }
-    else alert(editingExpenseId ? 'Đã cập nhật chi phí.' : 'Đã lưu chi phí.');
   } catch(err){
     alert('Không lưu được chi phí: ' + err.message);
   } finally{
@@ -2766,7 +2770,7 @@ function renderExpenseList(){
         <div class="mono" style="font-weight:700;color:var(--danger);white-space:nowrap;">${(r.amount||0).toLocaleString('vi-VN')}đ</div>
         ${r.expenseId ? `<div style="display:flex;gap:6px;">
           <button class="confirm-btn no" onclick="editExpense('${r.expenseId}')">Sửa</button>
-          <button class="confirm-btn no" style="background:#FDECE6;color:var(--danger);" onclick="deleteExpense('${r.expenseId}')">Xoá</button>
+          ${currentUser && currentUser.role === 'Chu' ? `<button class="confirm-btn no" style="background:#FDECE6;color:var(--danger);" onclick="deleteExpense('${r.expenseId}')">Xoá</button>` : ''}
         </div>` : ''}
       </div>
     </div>
