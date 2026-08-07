@@ -1,0 +1,18 @@
+{
+  "name": "GLOS",
+    "short_name": "GLOS",
+      "description": "Hệ thống vận hành nội bộ Giặt Là Manor",
+        "start_url": "./index.html",
+          "scope": "./",
+            "display": "standalone",
+              "orientation": "portrait",
+                "background_color": "#EEF4F2",
+                  "theme_color": "#0F6E5C",
+                    "lang": "vi",
+                      "icons": [
+                          { "src": "icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+                              { "src": "icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+                                  { "src": "icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "maskable" },
+                                      { "src": "icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+                                        ]
+                                        }
