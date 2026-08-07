@@ -13,7 +13,13 @@
 <meta property="og:site_name" content="Giặt Là Manor">
 <meta property="og:description" content="Hệ thống vận hành nội bộ Giặt Là Manor">
 <meta property="og:type" content="website">
-<link rel="preconnect" href="https://fonts.googleapis.com">
+<!-- ====== PWA: manifest + icon (Them vao man hinh chinh tren iPhone trong nhu app that) ====== -->
+  <link rel="manifest" href="manifest.json">
+  <link rel="apple-touch-icon" href="icon-180.png">
+  <link rel="apple-touch-icon" sizes="152x152" href="icon-152.png">
+  <link rel="icon" type="image/png" sizes="192x192" href="icon-192.png">
+  <link rel="icon" type="image/png" sizes="32x32" href="icon-32.png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
 <style>
   :root{
@@ -2864,5 +2870,14 @@ function renderCashWithdrawList(){
   `).join('');
 }
 </script>
+<!-- ====== PWA: dang ky service worker (cache phan giao dien tinh, khong dung du lieu dong) ====== -->
+<script>
+  if('serviceWorker' in navigator){
+    window.addEventListener('load', () => {
+      navigator.serviceWorker.register('sw.js').catch(() => {});
+    });
+  }
+    </script>
+  
 </body>
 </html>
