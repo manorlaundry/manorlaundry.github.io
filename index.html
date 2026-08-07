@@ -252,6 +252,55 @@
     background:#fff; border:1.5px dashed var(--border); border-radius:14px;
   }
 
+    /* nút danger (dùng cho xác nhận xoá) */
+    .btn-danger{ background:linear-gradient(160deg,#D4553F,var(--danger)); color:#fff; box-shadow:0 6px 14px rgba(193,68,46,.3); }
+
+    /* ====== Toast/snackbar ====== */
+    #toastStack{
+          position:fixed; top:12px; left:50%; transform:translateX(-50%);
+          z-index:10001; display:flex; flex-direction:column; gap:8px; align-items:center;
+          width:100%; max-width:400px; padding:0 20px; pointer-events:none;
+    }
+    .toast{
+          pointer-events:auto; max-width:100%;
+          padding:11px 16px; border-radius:14px; font-size:13.5px; font-weight:600; line-height:1.4;
+          box-shadow:0 6px 18px rgba(15,35,29,0.18);
+          color:#fff; animation:toast-in .22s ease;
+    }
+    .toast.success{ background:linear-gradient(150deg,var(--brand),var(--brand-dark)); }
+    .toast.error{ background:linear-gradient(150deg,#D4553F,var(--danger)); }
+    .toast.info{ background:linear-gradient(150deg,#3A4B44,#28352F); }
+    .toast.leaving{ animation:toast-out .18s ease forwards; }
+    @keyframes toast-in{ from{opacity:0; transform:translateY(-8px) scale(.96);} to{opacity:1; transform:translateY(0) scale(1);} }
+    @keyframes toast-out{ from{opacity:1; transform:translateY(0) scale(1);} to{opacity:0; transform:translateY(-8px) scale(.96);} }
+
+    /* ====== Confirm modal ====== */
+    .confirm-overlay{
+          position:fixed; inset:0; z-index:10002; background:rgba(15,35,29,0.45);
+          display:flex; align-items:center; justify-content:center; padding:24px;
+          animation:confirm-fade .15s ease;
+    }
+    @keyframes confirm-fade{ from{opacity:0;} to{opacity:1;} }
+    .confirm-box{
+          background:#fff; border-radius:18px; padding:22px 20px; width:100%; max-width:330px;
+          box-shadow:0 20px 40px rgba(0,0,0,0.25); text-align:center;
+          animation:confirm-pop .18s ease;
+    }
+    @keyframes confirm-pop{ from{opacity:0; transform:scale(.94);} to{opacity:1; transform:scale(1);} }
+    .confirm-box p{ font-size:14.5px; color:var(--ink); line-height:1.5; margin:0 0 18px; }
+    .confirm-box .row{ gap:10px; }
+
+    /* ====== Skeleton loading ====== */
+    @keyframes skeleton-shimmer{ 0%{background-position:-300px 0;} 100%{background-position:300px 0;} }
+    .skeleton{
+          background:linear-gradient(90deg,#E3EAE7 25%,#EEF3F1 37%,#E3EAE7 63%);
+          background-size:300px 100%;
+          animation:skeleton-shimmer 1.3s ease-in-out infinite;
+          border-radius:12px;
+    }
+    .skeleton-row{ height:60px; margin-bottom:9px; }
+    .skeleton-line{ height:13px; border-radius:6px; display:inline-block; }
+
   /* Đơn hàng */
   .item-chip-row{display:flex; flex-wrap:wrap; gap:8px; margin-top:10px;}
   .item-chip{
@@ -301,6 +350,7 @@
     box-shadow:0 3px 12px rgba(15,35,29,0.05);
   }
   .stat-card .num{font-family:'JetBrains Mono',monospace; font-weight:700; font-size:22px; color:var(--brand-dark);}
+  .stat-card .num.skeleton{display:inline-block; width:60px; height:20px; vertical-align:middle;}
   .stat-card.accent .num{color:var(--accent-ink);}
   .stat-card .label{font-size:11.5px; color:var(--ink-soft); font-weight:600; margin-top:2px;}
   .bar-list{display:flex; flex-direction:column; gap:9px;}
@@ -461,6 +511,7 @@
 </div>
 
 <div id="busyToast" style="display:none;position:fixed;top:12px;left:50%;transform:translateX(-50%);background:var(--brand);color:#fff;padding:8px 16px;border-radius:999px;font-size:13px;font-weight:600;z-index:9999;box-shadow:0 4px 14px rgba(0,0,0,.18);">Đang xử lý...</div>
+  <div id="toastStack"></div>
 
 <!-- Lịch chọn ngày tự viết — luôn hiển thị dd/mm/yyyy, không phụ thuộc ngôn ngữ trình duyệt/hệ điều hành. -->
 <div id="vnCalPopup" class="vn-cal-popup" style="display:none;">
@@ -1222,7 +1273,7 @@ async function loadPayrollDetail(){
   const resultEl = document.getElementById('payrollDetailResult');
   if(!employeeId){ resultEl.textContent = 'Vui lòng chọn nhân viên.'; return; }
   if(!fromIso || !toIso){ resultEl.textContent = 'Vui lòng chọn khoảng ngày.'; return; }
-  resultEl.textContent = '';
+  resultEl.innerHTML = '<span class="skeleton skeleton-line" style="width:220px;"></span>';
   document.getElementById('payrollHistoryCard').style.display = 'none';
   showBusy('Đang tải dữ liệu lương...');
   try{
@@ -1316,7 +1367,7 @@ function buildPayrollPayload_(){
 }
 
 async function savePayrollDetailed(){
-  if(!payrollDetail){ alert('Vui lòng bấm "Xem chấm công & tính lương" trước.'); return; }
+  if(!payrollDetail){ showToast('Vui lòng bấm "Xem chấm công & tính lương" trước.'); return; }
   const resultEl = document.getElementById('payrollSendResult');
   resultEl.textContent = '';
   showBusy('Đang lưu phiếu lương...');
@@ -1336,10 +1387,11 @@ async function savePayrollDetailed(){
 // ---------- Lịch sử phiếu lương đã lưu ----------
 async function loadPayrollHistory(){
   const employeeId = document.getElementById('payrollEmployeeSelect').value;
-  if(!employeeId){ alert('Vui lòng chọn nhân viên.'); return; }
+  if(!employeeId){ showToast('Vui lòng chọn nhân viên.'); return; }
   const card = document.getElementById('payrollHistoryCard');
   const wrap = document.getElementById('payrollHistoryWrap');
   card.style.display = 'block';
+    wrap.innerHTML = skeletonRows(2, 70);
   showBusy('Đang tải lịch sử phiếu lương...');
   try{
     const r = await apiCall('getPayrollDetailHistory', { employeeId });
@@ -1391,8 +1443,8 @@ function togglePayrollHistoryItem(i){
 }
 
 async function sendPayrollEmailNow(){
-  if(!payrollDetail){ alert('Vui lòng bấm "Xem chấm công & tính lương" trước.'); return; }
-  if(!payrollDetail.email){ alert('Nhân viên này chưa có email trong hồ sơ (thêm ở Firestore > full_employees > email).'); return; }
+  if(!payrollDetail){ showToast('Vui lòng bấm "Xem chấm công & tính lương" trước.'); return; }
+  if(!payrollDetail.email){ showToast('Nhân viên này chưa có email trong hồ sơ (thêm ở Firestore > full_employees > email).'); return; }
   const resultEl = document.getElementById('payrollSendResult');
   resultEl.textContent = '';
   showBusy('Đang gửi email...');
@@ -1426,7 +1478,7 @@ function downloadCSV_(filename, headers, rows){
 
 function exportChamCongCSV(){
   if(!lastChamCongRecords || lastChamCongRecords.length === 0){
-    alert('Chưa có dữ liệu để xuất. Vui lòng chọn khoảng ngày và bấm "Xem" trước.');
+    showToast('Chưa có dữ liệu để xuất. Vui lòng chọn khoảng ngày và bấm "Xem" trước.');
     return;
   }
   const headers = ['Ngày','Nhân viên','Ca','Giờ vào','Giờ ra','Tổng giờ','Phút đi muộn','Phút tăng ca','Tăng ca đã duyệt'];
@@ -1438,7 +1490,7 @@ function exportChamCongCSV(){
 
 function exportPayrollCSV(){
   if(!payrollDetail){
-    alert('Vui lòng bấm "Xem chấm công & tính lương" trước.');
+    showToast('Vui lòng bấm "Xem chấm công & tính lương" trước.');
     return;
   }
   const p = buildPayrollPayload_();
@@ -1525,9 +1577,51 @@ function compressImage(file, maxDim, quality){
 function showBusy(msg){ const el = document.getElementById('busyToast'); el.textContent = msg || 'Đang xử lý...'; el.style.display = 'block'; }
 function hideBusy(){ document.getElementById('busyToast').style.display = 'none'; }
 
+  // ---------- Toast/snackbar ----------
+  function showToast(msg, type){
+      const stack = document.getElementById('toastStack');
+      if(!stack){ return; }
+      const t = document.createElement('div');
+      t.className = 'toast ' + (type || 'error');
+      t.textContent = msg;
+      stack.appendChild(t);
+      setTimeout(() => {
+            t.classList.add('leaving');
+            setTimeout(() => t.remove(), 200);
+      }, 3200);
+                                  }
+
+  // ---------- Confirm modal ----------
+  function showConfirm(msg, opts){
+      opts = opts || {};
+      return new Promise((resolve) => {
+            const overlay = document.createElement('div');
+            overlay.className = 'confirm-overlay';
+            overlay.innerHTML = '<div class="confirm-box"><p></p><div class="row"><button class="btn btn-ghost btn-full"></button><button class="btn btn-full"></button></div></div>';
+            document.body.appendChild(overlay);
+            const box = overlay.querySelector('.confirm-box');
+            box.querySelector('p').textContent = msg;
+            const buttons = overlay.querySelectorAll('button');
+            buttons[0].textContent = opts.cancelText || 'Huỷ';
+            buttons[1].textContent = opts.okText || 'Xác nhận';
+            buttons[1].classList.add(opts.danger ? 'btn-danger' : 'btn-in');
+            const cleanup = (val) => { overlay.remove(); resolve(val); };
+            buttons[0].onclick = () => cleanup(false);
+            buttons[1].onclick = () => cleanup(true);
+            overlay.onclick = (e) => { if(e.target === overlay) cleanup(false); };
+     });
+  }
+
+  // ---------- Skeleton loading ----------
+  function skeletonRows(n, heightPx){
+      let html = '';
+      for(let i=0;i<(n||3);i++) html += '<div class="skeleton skeleton-row" style="height:' + (heightPx||60) + 'px;"></div>';
+      return html;
+  }
+
 // ---------- chấm công ----------
 function triggerCheck(type){
-  if(!currentUser){ alert('Vui lòng đăng nhập trước.'); return; }
+  if(!currentUser){ showToast('Vui lòng đăng nhập trước.'); return; }
   pendingCheckType = type;
   document.getElementById('photoInput').click();
 }
@@ -1569,15 +1663,15 @@ document.getElementById('photoInput').addEventListener('change', function(e){
         if(currentUser.role !== 'Chu') loadMyStatus(hist);
       } catch(e){ /* giữ nguyên thẻ tạm nếu tải lại lỗi — thao tác chấm công đã lưu thành công */ }
       if(type === 'in' && res.late){
-        alert(`Bạn đã đến muộn ${res.lateMinutes} phút (ca ${res.ca}).`);
+        showToast(`Bạn đã đến muộn ${res.lateMinutes} phút (ca ${res.ca}).`, 'info');
       }
       if(type === 'out' && res.overtimeMinutes > 0){
-        alert(`Phát sinh tăng ca ${res.overtimeMinutes} phút hôm nay, chờ Chủ duyệt.`);
+        showToast(`Phát sinh tăng ca ${res.overtimeMinutes} phút hôm nay, chờ Chủ duyệt.`, 'info');
       }
     }).catch(err => {
       const tempEl = document.getElementById(tempId);
       if(tempEl) tempEl.remove();
-      alert('Không lưu được vào hệ thống: ' + err.message);
+      showToast('Không lưu được vào hệ thống: ' + err.message);
     });
   };
 
@@ -1585,7 +1679,7 @@ document.getElementById('photoInput').addEventListener('change', function(e){
     showBusy('Đang xử lý ảnh...');
     compressImage(file).then(url => { hideBusy(); finish(url); }).catch(err => {
       hideBusy();
-      alert('Không xử lý được ảnh, vẫn tiếp tục chấm công: ' + err.message);
+      showToast('Không xử lý được ảnh, vẫn tiếp tục chấm công: ' + err.message);
       finish(null);
     });
   } else {
@@ -1614,7 +1708,7 @@ function toDriveThumbUrl_(url){
 async function loadAttendanceLog(dataOverride){
   const el = document.getElementById('attendanceLog');
   if(!currentUser) return;
-  if(!dataOverride) showBusy('Đang tải nhật ký ảnh...');
+  if(!dataOverride){ showBusy('Đang tải nhật ký ảnh...'); el.innerHTML = skeletonRows(3, 74); }
   try{
     const r = dataOverride || await apiCall('getCheckInHistory', {});
     const recs = r.records || [];
@@ -1705,6 +1799,7 @@ async function loadCheckInHistory(){
   const toIso = document.getElementById('chamCongHistoryTo').value;
   const el = document.getElementById('chamCongHistoryResult');
   if(!fromIso || !toIso){ el.innerHTML = '<div class="empty-state">Vui lòng chọn khoảng ngày.</div>'; return; }
+  el.innerHTML = skeletonRows(3, 60);
   showBusy('Đang tải lịch sử chấm công...');
   try{
     const r = await apiCall('getCheckInHistory', { from: toVNDate(fromIso), to: toVNDate(toIso) });
@@ -1818,7 +1913,7 @@ function renderOvertimeSummary(){
 
 async function approveOvertime(id){
   if(!currentUser || currentUser.role !== 'Chu') return;
-  if(!confirm('Xác nhận duyệt tăng ca cho ngày này? Số phút tăng ca sẽ được cộng vào giờ công để tính lương.')) return;
+  if(!await showConfirm('Xác nhận duyệt tăng ca cho ngày này? Số phút tăng ca sẽ được cộng vào giờ công để tính lương.')) return;
   showBusy('Đang duyệt tăng ca...');
   try{
     await apiCall('approveOvertime', { id });
@@ -1827,7 +1922,7 @@ async function approveOvertime(id){
     renderChamCongHistoryList();
     renderOvertimeSummary();
   } catch(err){
-    alert('Không duyệt được: ' + err.message);
+    showToast('Không duyệt được: ' + err.message);
   } finally{
     hideBusy();
   }
@@ -1919,7 +2014,7 @@ async function loadShiftWeek(dataOverride){
   const to = fmtVN_(addDays_(shiftWeekStart, 6));
   document.getElementById('shiftWeekLabel').textContent = `${from.slice(0,5)} - ${to}`;
   const gridWrap = document.getElementById('shiftGridWrap');
-  if(!dataOverride) showBusy('Đang tải ca làm...');
+  if(!dataOverride){ showBusy('Đang tải ca làm...'); gridWrap.innerHTML = skeletonRows(3, 44); }
   try{
     const r = dataOverride || await apiCall('getShiftRange', { from, to });
     await renderShiftWeek(r.rows || [], r.isOwner, from);
@@ -2023,18 +2118,18 @@ document.getElementById('billPhotoInput').addEventListener('change', function(e)
         `<img src="${pendingBillPhoto}" style="width:60px;height:60px;object-fit:cover;border-radius:8px;border:1px solid var(--border);margin-top:8px;">`;
     }).catch(err => {
       hideBusy();
-      alert('Không xử lý được ảnh bill: ' + err.message);
+      showToast('Không xử lý được ảnh bill: ' + err.message);
     });
   }
   e.target.value = '';
 });
 
 function sendPackage(){
-  if(!currentUser){ alert('Vui lòng đăng nhập trước.'); return; }
+  if(!currentUser){ showToast('Vui lòng đăng nhập trước.'); return; }
   const customer = document.getElementById('packageCustomerName').value.trim();
-  if(!customer){ alert('Vui lòng nhập tên khách hàng.'); return; }
+  if(!customer){ showToast('Vui lòng nhập tên khách hàng.'); return; }
   const amount = parseInt(document.getElementById('packageAmount').value.replace(/\D/g,'')) || 0;
-  if(!amount){ alert('Vui lòng nhập số tiền.'); return; }
+  if(!amount){ showToast('Vui lòng nhập số tiền.'); return; }
   const billPhoto = pendingBillPhoto;
   const isEdit = !!editingPackageId;
   const editId = editingPackageId;
@@ -2083,7 +2178,7 @@ function sendPackage(){
     } else {
       refreshPackageTab(); // hoàn tác thay đổi sửa lạc quan bằng cách tải lại dữ liệu thật
     }
-    alert('Không lưu được: ' + err.message);
+    showToast('Không lưu được: ' + err.message);
   });
 }
 
@@ -2115,8 +2210,8 @@ function cancelPackageEdit(){
   document.getElementById('donggoiCancelBtn').style.display = 'none';
 }
 
-function deletePackage(packageId){
-  if(!confirm('Xoá đơn đóng gói này?')) return;
+async function deletePackage(packageId){
+  if(!await showConfirm('Xoá đơn đóng gói này?', {danger:true})) return;
   if(editingPackageId === packageId) cancelPackageEdit();
 
   // Optimistic UI: xoá khỏi danh sách hiển thị ngay, gọi API ngầm phía sau — nếu lỗi thì tải lại
@@ -2129,7 +2224,7 @@ function deletePackage(packageId){
     refreshPackageTab();
   }).catch(err => {
     refreshPackageTab();
-    alert('Không xoá được: ' + err.message);
+    showToast('Không xoá được: ' + err.message);
   });
 }
 
@@ -2139,7 +2234,7 @@ async function loadPackageHistory(dataOverride){
   const toIso = document.getElementById('packageHistoryTo').value;
   const el = document.getElementById('packageHistoryResult');
   if(!fromIso || !toIso){ el.innerHTML = '<div class="empty-state">Vui lòng chọn khoảng ngày.</div>'; return; }
-  if(!dataOverride) showBusy('Đang tải lịch sử đóng gói...');
+  if(!dataOverride){ showBusy('Đang tải lịch sử đóng gói...'); el.innerHTML = skeletonRows(3, 70); }
   try{
     const r = dataOverride || await apiCall('getPackages', { from: toVNDate(fromIso), to: toVNDate(toIso) });
     lastPackageRows = r.rows || [];
@@ -2300,14 +2395,14 @@ function selectDeliveryMethod(m){
 let editingOrderId = null;
 
 function sendReturnNotice(){
-  if(!currentUser){ alert('Vui lòng đăng nhập trước.'); return; }
-  if(!editingOrderId && !selectedPackage){ alert('Vui lòng chọn khách hàng đã đóng gói.'); return; }
+  if(!currentUser){ showToast('Vui lòng đăng nhập trước.'); return; }
+  if(!editingOrderId && !selectedPackage){ showToast('Vui lòng chọn khách hàng đã đóng gói.'); return; }
   const customer = document.getElementById('customerName').value.trim();
-  if(!customer){ alert('Vui lòng nhập tên khách hàng.'); return; }
+  if(!customer){ showToast('Vui lòng nhập tên khách hàng.'); return; }
   const amount = parseInt(document.getElementById('orderAmount').value.replace(/\D/g,'')) || 0;
-  if(!amount){ alert('Không xác định được số tiền — vui lòng chọn lại khách hàng đã đóng gói.'); return; }
-  if(!selectedMethod){ alert('Vui lòng chọn hình thức thanh toán.'); return; }
-  if(!selectedDeliveryMethod){ alert('Vui lòng chọn hình thức trả đồ.'); return; }
+  if(!amount){ showToast('Không xác định được số tiền — vui lòng chọn lại khách hàng đã đóng gói.'); return; }
+  if(!selectedMethod){ showToast('Vui lòng chọn hình thức thanh toán.'); return; }
+  if(!selectedDeliveryMethod){ showToast('Vui lòng chọn hình thức trả đồ.'); return; }
 
   const isEdit = !!editingOrderId;
   const editId = editingOrderId;
@@ -2361,7 +2456,7 @@ function sendReturnNotice(){
       refreshDonHangTab(); // hoàn tác thay đổi sửa lạc quan bằng cách tải lại dữ liệu thật
       if(deliveredFilter === 'unconfirmed') loadUnpaidNotices();
     }
-    alert('Không lưu được thông báo: ' + err.message);
+    showToast('Không lưu được thông báo: ' + err.message);
   });
 }
 
@@ -2403,8 +2498,8 @@ function cancelReturnNoticeEdit(){
   document.getElementById('donhangCancelBtn').style.display = 'none';
 }
 
-function deleteReturnNotice(orderId){
-  if(!confirm('Xoá thông báo trả đồ này?')) return;
+async function deleteReturnNotice(orderId){
+  if(!await showConfirm('Xoá thông báo trả đồ này?', {danger:true})) return;
   if(editingOrderId === orderId) cancelReturnNoticeEdit();
 
   // Optimistic UI: xoá khỏi danh sách hiển thị ngay (cả 2 danh sách cục bộ), gọi API ngầm phía
@@ -2419,7 +2514,7 @@ function deleteReturnNotice(orderId){
   }).catch(err => {
     refreshDonHangTab();
     if(deliveredFilter === 'unconfirmed') loadUnpaidNotices();
-    alert('Không xoá được: ' + err.message);
+    showToast('Không xoá được: ' + err.message);
   });
 }
 
@@ -2554,14 +2649,14 @@ function toggleConfirm(orderId, newVal){
   }).catch(err => {
     patchDeliveredNoticeLocal_(orderId, { confirmed: prevVal });
     renderDeliveredList();
-    alert('Không xác nhận được: ' + err.message);
+    showToast('Không xác nhận được: ' + err.message);
   });
 }
 
 function loadReturnNoticesForDate(){
   const fromIso = document.getElementById('traDoHistoryFrom').value;
   const toIso = document.getElementById('traDoHistoryTo').value;
-  if(!fromIso || !toIso){ alert('Vui lòng chọn khoảng ngày.'); return; }
+  if(!fromIso || !toIso){ showToast('Vui lòng chọn khoảng ngày.'); return; }
   renderDeliveredOrders({ from: toVNDate(fromIso), to: toVNDate(toIso) });
 }
 
@@ -2570,6 +2665,7 @@ let reportCurrentRange = null;
 async function renderReport(rangeOverride){
   reportCurrentRange = rangeOverride || null;
   const statEls = ['statLate','statOrders','statRevenue','statRevenueCash','statRevenueTransfer','statExpense','statProfit','statUnconfirmed','statPendingReturn'].map(id=>document.getElementById(id));
+  statEls.forEach(el => { el.textContent = ''; el.classList.add('skeleton'); });
   showBusy('Đang tải báo cáo...');
   try{
     const params = rangeOverride ? { from: rangeOverride.from, to: rangeOverride.to } : {};
@@ -2622,7 +2718,7 @@ function goToLateList(){
 function loadReportForDate(){
   const fromIso = document.getElementById('reportFrom').value;
   const toIso = document.getElementById('reportTo').value;
-  if(!fromIso || !toIso){ alert('Vui lòng chọn khoảng ngày.'); return; }
+  if(!fromIso || !toIso){ showToast('Vui lòng chọn khoảng ngày.'); return; }
   renderReport({ from: toVNDate(fromIso), to: toVNDate(toIso) });
 }
 
@@ -2661,12 +2757,12 @@ function selectExpenseMethod(m){
 }
 
 async function sendExpense(){
-  if(!currentUser){ alert('Vui lòng đăng nhập trước.'); return; }
+  if(!currentUser){ showToast('Vui lòng đăng nhập trước.'); return; }
   const dateIso = document.getElementById('expenseDate').value;
   const category = document.getElementById('expenseCategory').value;
   const amount = parseInt(document.getElementById('expenseAmount').value.replace(/\D/g,'')) || 0;
-  if(!amount){ alert('Vui lòng nhập số tiền.'); return; }
-  if(!selectedExpenseMethod){ alert('Vui lòng chọn nguồn tiền chi trả.'); return; }
+  if(!amount){ showToast('Vui lòng nhập số tiền.'); return; }
+  if(!selectedExpenseMethod){ showToast('Vui lòng chọn nguồn tiền chi trả.'); return; }
   const method = selectedExpenseMethod;
   const note = document.getElementById('expenseNote').value.trim();
   const date = dateIso ? toVNDate(dateIso) : undefined;
@@ -2685,7 +2781,7 @@ async function sendExpense(){
       loadCashBalance(); // chi tiền mặt vừa trừ vào quỹ -> làm mới số dư hiển thị nếu Chủ đang xem tab Báo cáo.
     }
   } catch(err){
-    alert('Không lưu được chi phí: ' + err.message);
+    showToast('Không lưu được chi phí: ' + err.message);
   } finally{
     hideBusy();
   }
@@ -2723,14 +2819,14 @@ function cancelExpenseEdit(){
 }
 
 async function deleteExpense(expenseId){
-  if(!confirm('Xoá khoản chi phí này?')) return;
+  if(!await showConfirm('Xoá khoản chi phí này?', {danger:true})) return;
   showBusy('Đang xoá...');
   try{
     await apiCall('deleteExpense', { expenseId });
     if(editingExpenseId === expenseId) cancelExpenseEdit();
     loadExpenseHistory();
   } catch(err){
-    alert('Không xoá được: ' + err.message);
+    showToast('Không xoá được: ' + err.message);
   } finally{
     hideBusy();
   }
@@ -2745,6 +2841,7 @@ async function loadExpenseHistory(){
   const category = document.getElementById('expenseCategoryFilter').value;
   const el = document.getElementById('expenseHistoryResult');
   if(!fromIso || !toIso){ el.innerHTML = '<div class="empty-state">Vui lòng chọn khoảng ngày.</div>'; return; }
+  el.innerHTML = skeletonRows(3, 60);
   showBusy('Đang tải chi phí...');
   try{
     const params = { from: toVNDate(fromIso), to: toVNDate(toIso) };
@@ -2801,13 +2898,13 @@ async function openCashAdjustPrompt(){
   const input = prompt('Nhập số dư tiền mặt thực tế tại tiệm (VNĐ):');
   if(input === null) return;
   const balance = parseInt(input.replace(/\D/g,''));
-  if(isNaN(balance)){ alert('Số dư không hợp lệ.'); return; }
+  if(isNaN(balance)){ showToast('Số dư không hợp lệ.'); return; }
   showBusy('Đang cập nhật số dư...');
   try{
     await apiCall('setCashBalance', { balance });
     loadCashBalance();
   } catch(err){
-    alert('Không cập nhật được: ' + err.message);
+    showToast('Không cập nhật được: ' + err.message);
   } finally{
     hideBusy();
   }
@@ -2816,7 +2913,7 @@ async function openCashAdjustPrompt(){
 async function sendCashWithdrawal(){
   if(!currentUser) return;
   const amount = parseInt(document.getElementById('cashWithdrawAmount').value.replace(/\D/g,'')) || 0;
-  if(!amount){ alert('Vui lòng nhập số tiền rút.'); return; }
+  if(!amount){ showToast('Vui lòng nhập số tiền rút.'); return; }
   const note = document.getElementById('cashWithdrawNote').value.trim();
   showBusy('Đang lưu rút tiền mặt...');
   try{
@@ -2826,7 +2923,7 @@ async function sendCashWithdrawal(){
     loadCashBalance();
     loadCashWithdrawHistory();
   } catch(err){
-    alert('Không rút được: ' + err.message);
+    showToast('Không rút được: ' + err.message);
   } finally{
     hideBusy();
   }
@@ -2839,6 +2936,7 @@ async function loadCashWithdrawHistory(){
   const toIso = document.getElementById('cashWithdrawHistoryTo').value;
   const el = document.getElementById('cashWithdrawHistoryResult');
   if(!fromIso || !toIso){ el.innerHTML = '<div class="empty-state">Vui lòng chọn khoảng ngày.</div>'; return; }
+  el.innerHTML = skeletonRows(3, 60);
   showBusy('Đang tải lịch sử rút tiền mặt...');
   try{
     const r = await apiCall('getCashWithdrawals', { from: toVNDate(fromIso), to: toVNDate(toIso) });
