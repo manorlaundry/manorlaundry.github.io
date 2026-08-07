@@ -979,7 +979,11 @@ async function doLogin(){
     document.getElementById('myStatusCard').style.display = currentUser.role === 'Chu' ? 'none' : 'block';
     // Xuất file Excel/CSV chỉ dành cho tài khoản Chủ — nhân viên không cần tính năng này.
     document.getElementById('chamCongExportBtn').style.display = currentUser.role === 'Chu' ? '' : 'none';
-    // Gộp 3 lệnh (trạng thái/lịch sử chấm công hôm nay + lịch xếp ca tuần + đóng gói chờ trả đồ)
+    // Chủ vào thẳng tab Báo cáo; Nhân viên (không có tab Báo cáo) vẫn vào Chấm công như cũ.
+        // Chuyển tab NGAY tại đây (trước khi chờ getLoginBundle) để không bị hiện thoáng qua tab Chấm công
+        // rồi mới nhảy sang Báo cáo — tránh cảm giác giật/flash lúc vừa đăng nhập.
+      switchTab(currentUser.role === 'Chu' ? 'baocao' : 'chamcong');
+        // Gộp 3 lệnh (trạng thái/lịch sử chấm công hôm nay + lịch xếp ca tuần + đóng gói chờ trả đồ)
     // thành 1 lần gọi duy nhất thay vì bắn riêng từng lệnh — đỡ chậm hẳn lúc vừa đăng nhập.
     if(!shiftWeekStart) shiftWeekStart = mondayOf_(new Date());
     const shiftFrom = fmtVN_(shiftWeekStart);
@@ -996,8 +1000,6 @@ async function doLogin(){
       loadAttendanceLog();
       loadPendingPackages();
     }
-    // Chủ vào thẳng tab Báo cáo; Nhân viên (không có tab Báo cáo) vẫn vào Chấm công như cũ.
-    switchTab(currentUser.role === 'Chu' ? 'baocao' : 'chamcong');
   } catch(err){
     errEl.textContent = 'Không kết nối được server (' + err.message + '). Kiểm tra WEBAPP_URL trong file Index có đúng với link Web App hiện tại (Deploy > Manage deployments) không.';
   } finally{
