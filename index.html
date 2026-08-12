@@ -866,6 +866,15 @@
       <h2 class="section-title">Tổng đã rút: <span id="cashWithdrawTotalLabel">0đ</span></h2>
       <div id="cashWithdrawHistoryResult"></div>
 
+      <!-- ====== Import chi tiết dịch vụ (từ phần mềm quản lý khác) — tab Báo cáo vốn đã chỉ hiện với Chủ ====== -->
+      <h2 class="section-title">Import chi tiết dịch vụ</h2>
+      <div class="card">
+        <div class="field-label" style="margin-bottom:8px;">File Excel (đơn hàng + chi tiết dịch vụ) từ phần mềm quản lý khác — chỉ chứa dữ liệu 1 ngày.</div>
+        <input type="file" id="serviceImportFileInput" accept=".xlsx,.xls" style="display:none;" onchange="handleServiceImportFile(event)">
+        <button class="btn btn-ghost btn-full btn-sm" onclick="document.getElementById('serviceImportFileInput').click()">📥 Import chi tiết dịch vụ</button>
+      </div>
+      <div id="serviceImportResult"></div>
+
     </div>
 
     <!-- TAB: LƯƠNG (chỉ Chủ) -->
@@ -972,6 +981,8 @@
 
 </div>
 
+<!-- SheetJS — đọc file Excel import chi tiết dịch vụ ngay trên trình duyệt (tab Báo cáo, chỉ Chủ) -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script>
 // ====== CONFIG ======
 // Bản ĐẦY ĐỦ chạy trên Firebase Cloud Functions (region asia-southeast1) — sửa URL này sau khi deploy xong.
@@ -2613,6 +2624,7 @@ function renderDeliveredList(){
       <div>
         <div class="who">${o.customer}</div>
         <div class="sub">${o.date}${o.time ? ' '+o.time : ''}${o.billUrl ? ` · <a href="${o.billUrl}" target="_blank">Xem bill</a>` : ''}${o.employeeName ? ` · NV: ${o.employeeName}` : ''}</div>
+        ${o.chiTietDichVu && o.chiTietDichVu.length ? `<div class="sub" style="margin-top:2px;">🧾 ${o.chiTietDichVu.map(x=>x.ten+(x.soLuong?' ×'+x.soLuong:'')).join(', ')}</div>` : ''}
       </div>
       <div style="display:flex; flex-direction:column; align-items:flex-end; gap:6px;">
         <div class="mono" style="font-weight:800;font-size:15px;color:var(--brand-dark);white-space:nowrap;">${o.amount.toLocaleString('vi-VN')}đ</div>
@@ -2975,6 +2987,217 @@ function renderCashWithdrawList(){
       navigator.serviceWorker.register('sw.js').catch(() => {});
     });
   }
+// ====== Import chi tiết dịch vụ đơn hàng (từ phần mềm quản lý khác) ======
+// Chủ export file Excel (2 sheet: DonHang + ChiTietDonHang) từ phần mềm quản lý riêng (chạy song song
+// với GLOS), đúng dữ liệu 1 ngày. Đọc + join ngay trên trình duyệt bằng SheetJS, gửi lên backend action
+// mới (previewServiceImport) để backend tự khớp với full_donHang theo NGÀY + TIỀN (không dùng SĐT/tên —
+// full_donHang không lưu SĐT khách, đã thống nhất với Chủ). Xem trước 3 nhóm, Chủ xác nhận tay nếu cần,
+// chỉ khi bấm nút cuối cùng mới thực sự ghi Firestore (saveServiceImport).
+const SERVICE_IMPORT_REQUIRED_COLS_DONHANG = ['Mã đơn','Ngày tạo đơn','Tên khách hàng','Điện thoại KH','Tổng tiền','Chiết khấu tổng đơn hàng (VNĐ)','Khách phải trả','HT thanh toán','Trạng thái đơn hàng'];
+const SERVICE_IMPORT_REQUIRED_COLS_CHITIET = ['Mã ĐH','SKU','Sản phẩm/Dịch vụ','Đơn giá','Số lượng','Thành tiền'];
+
+let serviceImportState = null; // { autoMatched, needsReview, alreadyImported, manualSelections: {rowIndex: orderId|null|undefined} }
+
+function siToNumber_(v){
+  if(typeof v === 'number') return v;
+  if(v === null || v === undefined || v === '') return 0;
+  const n = Number(String(v).replace(/[^\d.-]/g,''));
+  return isNaN(n) ? 0 : n;
+}
+function siPad2_(n){ return String(n).padStart(2,'0'); }
+function siExcelDateToVN_(v){
+  if(v instanceof Date && !isNaN(v)){
+    return `${siPad2_(v.getDate())}/${siPad2_(v.getMonth()+1)}/${v.getFullYear()}`;
+  }
+  if(typeof v === 'number'){
+    const d = new Date(Math.round((v - 25569) * 86400 * 1000));
+    return `${siPad2_(d.getUTCDate())}/${siPad2_(d.getUTCMonth()+1)}/${d.getUTCFullYear()}`;
+  }
+  const s = String(v || '').trim();
+  let m = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})/);
+  if(m) return `${siPad2_(+m[1])}/${siPad2_(+m[2])}/${m[3]}`;
+  m = s.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/);
+  if(m) return `${siPad2_(+m[3])}/${siPad2_(+m[2])}/${m[1]}`;
+  return s;
+}
+function siValidateHeaders_(headerRow, required){
+  const have = new Set((headerRow||[]).map(h => String(h||'').trim()));
+  return required.filter(c => !have.has(c));
+}
+function siFmtMoney_(n){ return (Number(n)||0).toLocaleString('vi-VN') + 'đ'; }
+function siServicesLine_(list){
+  if(!list || !list.length) return '';
+  return list.map(x => `${x.ten}${x.soLuong ? ' ×'+x.soLuong : ''}`).join(', ');
+}
+
+async function handleServiceImportFile(event){
+  const file = event.target.files && event.target.files[0];
+  event.target.value = '';
+  if(!file) return;
+  document.getElementById('serviceImportResult').innerHTML = '';
+
+  let wb;
+  try{
+    const buf = await file.arrayBuffer();
+    wb = XLSX.read(buf, { type:'array', cellDates:true });
+  } catch(err){
+    showToast('Không đọc được file Excel: ' + err.message, 'error');
+    return;
+  }
+
+  const shDon = wb.Sheets['DonHang'];
+  const shChiTiet = wb.Sheets['ChiTietDonHang'];
+  if(!shDon || !shChiTiet){
+    showToast('Sai định dạng file — thiếu sheet "DonHang" hoặc "ChiTietDonHang".', 'error');
+    return;
+  }
+
+  const donHeaderRow = (XLSX.utils.sheet_to_json(shDon, { header:1 })[0]) || [];
+  const chiTietHeaderRow = (XLSX.utils.sheet_to_json(shChiTiet, { header:1 })[0]) || [];
+  const missingDon = siValidateHeaders_(donHeaderRow, SERVICE_IMPORT_REQUIRED_COLS_DONHANG);
+  const missingChiTiet = siValidateHeaders_(chiTietHeaderRow, SERVICE_IMPORT_REQUIRED_COLS_CHITIET);
+  if(missingDon.length || missingChiTiet.length){
+    const parts = [];
+    if(missingDon.length) parts.push('Sheet DonHang thiếu cột: ' + missingDon.join(', '));
+    if(missingChiTiet.length) parts.push('Sheet ChiTietDonHang thiếu cột: ' + missingChiTiet.join(', '));
+    showToast('Sai định dạng file — ' + parts.join(' · '), 'error');
+    return;
+  }
+
+  const donRows = XLSX.utils.sheet_to_json(shDon, { defval:'' });
+  const chiTietRows = XLSX.utils.sheet_to_json(shChiTiet, { defval:'' });
+  if(donRows.length === 0){
+    showToast('Sheet DonHang không có dòng dữ liệu nào.', 'error');
+    return;
+  }
+
+  const chiTietByMaDon = {};
+  chiTietRows.forEach(r => {
+    const key = String(r['Mã ĐH'] || '').trim();
+    if(!key) return;
+    (chiTietByMaDon[key] = chiTietByMaDon[key] || []).push({
+      sku: String(r['SKU'] || ''), ten: String(r['Sản phẩm/Dịch vụ'] || ''),
+      donGia: siToNumber_(r['Đơn giá']), soLuong: siToNumber_(r['Số lượng']), thanhTien: siToNumber_(r['Thành tiền'])
+    });
+  });
+
+  const orders = donRows.map(r => {
+    const maDon = String(r['Mã đơn'] || '').trim();
+    return {
+      maDon,
+      ngayTaoDon: siExcelDateToVN_(r['Ngày tạo đơn']),
+      tenKhachHang: String(r['Tên khách hàng'] || ''),
+      dienThoaiKH: String(r['Điện thoại KH'] || ''),
+      tongTien: siToNumber_(r['Tổng tiền']),
+      chietKhau: siToNumber_(r['Chiết khấu tổng đơn hàng (VNĐ)']),
+      khachPhaiTra: siToNumber_(r['Khách phải trả']),
+      htThanhToan: String(r['HT thanh toán'] || ''),
+      trangThaiDonHang: String(r['Trạng thái đơn hàng'] || ''),
+      chiTietDichVu: chiTietByMaDon[maDon] || []
+    };
+  });
+
+  showBusy('Đang đối chiếu với GLOS...');
+  try{
+    const res = await apiCall('previewServiceImport', { orders });
+    serviceImportState = { autoMatched: res.autoMatched||[], needsReview: res.needsReview||[], alreadyImported: res.alreadyImported||[], manualSelections: {} };
+    renderServiceImportSummary();
+  } catch(err){
+    showToast('Không đối chiếu được: ' + err.message, 'error');
+  } finally{
+    hideBusy();
+  }
+}
+
+function renderServiceImportSummary(){
+  const st = serviceImportState;
+  const el = document.getElementById('serviceImportResult');
+  if(!st){ el.innerHTML = ''; return; }
+
+  const autoHtml = st.autoMatched.length ? st.autoMatched.map(m => `
+    <div class="delivered-row">
+      <div>
+        <div class="who">${m.file.tenKhachHang || '(không tên)'} <span style="color:var(--ink-soft);font-weight:600;">→ ${m.glos.customer}</span></div>
+        <div class="sub">${m.glos.date} · ${siFmtMoney_(m.glos.amount)}${m.file.chiTietDichVu.length ? ' · '+siServicesLine_(m.file.chiTietDichVu) : ''}</div>
+      </div>
+    </div>
+  `).join('') : '<div class="empty-state">Không có đơn nào tự khớp được.</div>';
+
+  const reviewHtml = st.needsReview.length ? st.needsReview.map(rw => {
+    const sel = st.manualSelections[rw.rowIndex];
+    const skipped = sel === null;
+    const candHtml = rw.candidates.length ? rw.candidates.map(c => `
+      <div class="delivered-row" style="cursor:pointer;${sel===c.orderId ? 'border-color:var(--brand);background:#E4F3EC;' : ''}" onclick="siSelectCandidate(${rw.rowIndex}, '${c.orderId}')">
+        <div>
+          <div class="who">${c.customer}${sel===c.orderId ? ' ✓' : ''}</div>
+          <div class="sub">${c.date} · ${siFmtMoney_(c.amount)}${c.employeeName ? ' · NV: '+c.employeeName : ''}</div>
+        </div>
+      </div>
+    `).join('') : '<div class="empty-state">Không tìm thấy đơn GLOS nào cùng ngày còn trống để gợi ý.</div>';
+
+    return `
+      <div class="card" style="margin-bottom:10px;${skipped ? 'opacity:.55;' : ''}">
+        <div class="who" style="margin-bottom:4px;">${rw.file.tenKhachHang || '(không tên)'} — ${siFmtMoney_(rw.file.khachPhaiTra)}</div>
+        <div class="sub" style="margin-bottom:8px;">${rw.file.ngayTaoDon}${rw.file.chiTietDichVu.length ? ' · '+siServicesLine_(rw.file.chiTietDichVu) : ''}</div>
+        ${candHtml}
+        <button class="btn btn-ghost btn-full btn-sm" style="margin-top:8px;" onclick="siSkipRow(${rw.rowIndex})">${skipped ? '✓ Đã bỏ qua đơn này' : 'Bỏ qua đơn này'}</button>
+      </div>
+    `;
+  }).join('') : '<div class="empty-state">Không có đơn nào cần xác nhận tay.</div>';
+
+  const importedHtml = st.alreadyImported.map(m => `
+    <div class="delivered-row" style="opacity:.6;">
+      <div>
+        <div class="who">${m.file.tenKhachHang || '(không tên)'} <span style="color:var(--ink-soft);font-weight:600;">→ ${m.glos.customer}</span></div>
+        <div class="sub">${m.glos.date} · ${siFmtMoney_(m.glos.amount)} · đã import trước đó</div>
+      </div>
+    </div>
+  `).join('');
+
+  el.innerHTML = `
+    <h2 class="section-title">Đã tự khớp — sẵn sàng lưu (${st.autoMatched.length})</h2>
+    ${autoHtml}
+    <h2 class="section-title">Cần xác nhận thủ công (${st.needsReview.length})</h2>
+    ${reviewHtml}
+    ${st.alreadyImported.length ? `<h2 class="section-title">Đã import trước đó — bỏ qua (${st.alreadyImported.length})</h2>${importedHtml}` : ''}
+    <button class="btn btn-in btn-full" style="margin-top:12px;" onclick="confirmSaveServiceImport()">✅ Xác nhận lưu tất cả</button>
+  `;
+}
+
+function siSelectCandidate(rowIndex, orderId){
+  serviceImportState.manualSelections[rowIndex] = orderId;
+  renderServiceImportSummary();
+}
+function siSkipRow(rowIndex){
+  const cur = serviceImportState.manualSelections[rowIndex];
+  serviceImportState.manualSelections[rowIndex] = (cur === null) ? undefined : null;
+  renderServiceImportSummary();
+}
+
+async function confirmSaveServiceImport(){
+  const st = serviceImportState;
+  if(!st) return;
+  const selections = [];
+  st.autoMatched.forEach(m => selections.push({ orderId: m.glos.orderId, chiTietDichVu: m.file.chiTietDichVu }));
+  st.needsReview.forEach(rw => {
+    const sel = st.manualSelections[rw.rowIndex];
+    if(sel) selections.push({ orderId: sel, chiTietDichVu: rw.file.chiTietDichVu });
+  });
+  if(selections.length === 0){ showToast('Không có đơn nào để lưu.', 'error'); return; }
+
+  showBusy('Đang lưu...');
+  try{
+    const res = await apiCall('saveServiceImport', { selections });
+    hideBusy();
+    showToast(`Đã lưu chi tiết dịch vụ cho ${res.savedCount} đơn` + (res.skippedCount ? `, bỏ qua ${res.skippedCount} đơn (trùng/đã import).` : '.'), 'success');
+    serviceImportState = null;
+    document.getElementById('serviceImportResult').innerHTML = '';
+    if(typeof renderDeliveredOrders === 'function') renderDeliveredOrders(currentDeliveredRange);
+  } catch(err){
+    hideBusy();
+    showToast('Lưu thất bại: ' + err.message, 'error');
+  }
+}
     </script>
   
 </body>
