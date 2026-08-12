@@ -3117,7 +3117,7 @@ function renderServiceImportSummary(){
   const autoHtml = st.autoMatched.length ? st.autoMatched.map(m => `
     <div class="delivered-row">
       <div>
-        <div class="who">${m.file.tenKhachHang || '(không tên)'} <span style="color:var(--ink-soft);font-weight:600;">→ ${m.glos.customer}</span></div>
+        <div class="who">${m.file.tenKhachHang || '(không tên)'} <span style="color:var(--ink-soft);font-weight:600;">→ ${m.glos.customer}</span>${m.glos.type==='dongGoi' ? ' <span style="color:#B8860B;font-weight:600;">· '+m.glos.statusLabel+'</span>' : ''}</div>
         <div class="sub">${m.glos.date} · ${siFmtMoney_(m.glos.amount)}${m.file.chiTietDichVu.length ? ' · '+siServicesLine_(m.file.chiTietDichVu) : ''}</div>
       </div>
     </div>
@@ -3126,14 +3126,16 @@ function renderServiceImportSummary(){
   const reviewHtml = st.needsReview.length ? st.needsReview.map(rw => {
     const sel = st.manualSelections[rw.rowIndex];
     const skipped = sel === null;
-    const candHtml = rw.candidates.length ? rw.candidates.map(c => `
-      <div class="delivered-row" style="cursor:pointer;${sel===c.orderId ? 'border-color:var(--brand);background:#E4F3EC;' : ''}" onclick="siSelectCandidate(${rw.rowIndex}, '${c.orderId}')">
+    const candHtml = rw.candidates.length ? rw.candidates.map(c => {
+      const isSel = sel && sel.id === c.id && sel.type === c.type;
+      return `
+      <div class="delivered-row" style="cursor:pointer;${isSel ? 'border-color:var(--brand);background:#E4F3EC;' : ''}" onclick="siSelectCandidate(${rw.rowIndex}, '${c.id}', '${c.type}')">
         <div>
-          <div class="who">${c.customer}${sel===c.orderId ? ' ✓' : ''}</div>
+          <div class="who">${c.customer}${isSel ? ' ✓' : ''}${c.type==='dongGoi' ? ' <span style="color:#B8860B;font-weight:600;">· '+c.statusLabel+'</span>' : ''}</div>
           <div class="sub">${c.date} · ${siFmtMoney_(c.amount)}${c.employeeName ? ' · NV: '+c.employeeName : ''}</div>
         </div>
       </div>
-    `).join('') : '<div class="empty-state">Không tìm thấy đơn GLOS nào cùng ngày còn trống để gợi ý.</div>';
+    `; }).join('') : '<div class="empty-state">Không tìm thấy đơn GLOS nào cùng ngày còn trống để gợi ý.</div>';
 
     return `
       <div class="card" style="margin-bottom:10px;${skipped ? 'opacity:.55;' : ''}">
@@ -3164,8 +3166,8 @@ function renderServiceImportSummary(){
   `;
 }
 
-function siSelectCandidate(rowIndex, orderId){
-  serviceImportState.manualSelections[rowIndex] = orderId;
+function siSelectCandidate(rowIndex, id, type){
+  serviceImportState.manualSelections[rowIndex] = { id, type };
   renderServiceImportSummary();
 }
 function siSkipRow(rowIndex){
@@ -3178,10 +3180,10 @@ async function confirmSaveServiceImport(){
   const st = serviceImportState;
   if(!st) return;
   const selections = [];
-  st.autoMatched.forEach(m => selections.push({ orderId: m.glos.orderId, chiTietDichVu: m.file.chiTietDichVu }));
+  st.autoMatched.forEach(m => selections.push({ id: m.glos.id, type: m.glos.type, chiTietDichVu: m.file.chiTietDichVu }));
   st.needsReview.forEach(rw => {
     const sel = st.manualSelections[rw.rowIndex];
-    if(sel) selections.push({ orderId: sel, chiTietDichVu: rw.file.chiTietDichVu });
+    if(sel) selections.push({ id: sel.id, type: sel.type, chiTietDichVu: rw.file.chiTietDichVu });
   });
   if(selections.length === 0){ showToast('Không có đơn nào để lưu.', 'error'); return; }
 
