@@ -2315,6 +2315,7 @@ function renderPackageHistoryList(){
       <div>
         <div class="who">${p.customer}</div>
         <div class="sub">${p.date}${p.time ? ' '+p.time : ''}${p.billUrl ? ` · <a href="${p.billUrl}" target="_blank">Xem bill</a>` : ''}${p.employeeName ? ' · NV: '+p.employeeName : ''}</div>
+        ${p.chiTietDichVu && p.chiTietDichVu.length ? `<div class="sub" style="margin-top:2px;">🧾 ${p.chiTietDichVu.map(x=>x.ten+(x.soLuong?' ×'+x.soLuong:'')).join(', ')}</div>` : ''}
       </div>
       <div style="display:flex;flex-direction:column;align-items:flex-end;gap:6px;">
         <div class="mono" style="font-weight:800;font-size:15px;color:var(--brand-dark);white-space:nowrap;">${p.amount.toLocaleString('vi-VN')}đ</div>
@@ -2358,6 +2359,7 @@ function renderPendingPackageList(){
       <div>
         <div class="who">${p.customer}</div>
         <div class="sub">${p.date} · ${p.amount.toLocaleString('vi-VN')}đ${p.employeeName ? ' · NV đóng gói: '+p.employeeName : ''}</div>
+        ${p.chiTietDichVu && p.chiTietDichVu.length ? `<div class="sub" style="margin-top:2px;">🧾 ${p.chiTietDichVu.map(x=>x.ten+(x.soLuong?' ×'+x.soLuong:'')).join(', ')}</div>` : ''}
       </div>
     </div>
   `).join('');
