@@ -1974,10 +1974,98 @@ function renderChamCongHistoryList(){
       <div style="display:flex;flex-direction:column;gap:4px;align-items:flex-end;">
         ${rec.lateMinutes > 0 ? `<span class="method-tag" style="background:#FDECE6;color:var(--danger);">Muộn ${rec.lateMinutes}p</span>` : ''}
         ${otTag}
+        ${isOwner ? `<button onclick="openEditAttendanceModal('${rec.id}')" class="confirm-btn no">Sửa</button>` : ''}
       </div>
     </div>
   `;
   }).join('');
+}
+
+// Chủ tự sửa trực tiếp bản ghi chấm công (giờ vào/giờ ra thực tế, và khung ca chính thức nếu là Part
+// time) — cần dùng khi lịch xếp ca sửa SAU lúc nhân viên đã chấm công không tự áp dụng ngược lại (xem
+// giải thích: full_lichCa chỉ được đọc đúng 1 lần lúc check-in). Giờ công/đi muộn/tăng ca được backend
+// tính lại theo đúng công thức chuẩn — không cho nhập tay các số này.
+function openEditAttendanceModal(id){
+  if(!currentUser || currentUser.role !== 'Chu') return;
+  const rec = lastChamCongRecords.find(r => r.id === id);
+  if(!rec) return;
+  const isFullTimeRecord = rec.ca === 'Full time';
+
+  const overlay = document.createElement('div');
+  overlay.className = 'confirm-overlay';
+  overlay.innerHTML = `
+    <div class="confirm-box" style="text-align:left;max-width:340px;">
+      <h3 style="margin:0 0 2px;font-size:15px;">${escAttr_(rec.employeeName)}</h3>
+      <div style="font-size:12px;color:var(--ink-soft);margin-bottom:16px;">${rec.date}</div>
+
+      <div style="margin-bottom:12px;">
+        <div style="font-size:12px;font-weight:700;margin-bottom:6px;">Giờ vào / giờ ra thực tế</div>
+        <div style="display:flex;align-items:center;gap:8px;">
+          <input type="time" id="editCheckIn" value="${rec.checkIn || ''}" style="flex:1;min-width:0;padding:8px;border-radius:10px;border:1px solid var(--border);font-size:14px;">
+          <span>–</span>
+          <input type="time" id="editCheckOut" value="${rec.checkOut || ''}" style="flex:1;min-width:0;padding:8px;border-radius:10px;border:1px solid var(--border);font-size:14px;">
+        </div>
+      </div>
+
+      ${isFullTimeRecord ? '' : `
+      <div style="margin-bottom:6px;">
+        <div style="font-size:12px;font-weight:700;margin-bottom:6px;">Khung ca chính thức (để tính đi muộn/giờ công)</div>
+        <div style="display:flex;align-items:center;gap:8px;">
+          <input type="time" id="editShiftStart" value="${rec.shiftStart || ''}" style="flex:1;min-width:0;padding:8px;border-radius:10px;border:1px solid var(--border);font-size:14px;">
+          <span>–</span>
+          <input type="time" id="editShiftEnd" value="${rec.shiftEnd || ''}" style="flex:1;min-width:0;padding:8px;border-radius:10px;border:1px solid var(--border);font-size:14px;">
+        </div>
+        <div style="font-size:11px;color:var(--ink-soft);margin-top:6px;">Để trống cả 2 ô nếu ngày này chưa xếp ca.</div>
+      </div>
+      `}
+
+      <div style="font-size:11px;color:var(--ink-soft);margin:10px 0 16px;">Giờ công, đi muộn, tăng ca sẽ được tính lại theo đúng giờ vừa sửa. Tăng ca (nếu có) sẽ cần duyệt lại.</div>
+
+      <div class="row" style="display:flex;gap:10px;">
+        <button type="button" class="btn btn-ghost btn-full" id="cancelEditAttBtn">Huỷ</button>
+        <button type="button" class="btn btn-in btn-full" id="saveEditAttBtn">Lưu</button>
+      </div>
+    </div>`;
+  document.body.appendChild(overlay);
+
+  const close = () => overlay.remove();
+  overlay.onclick = (e) => { if(e.target === overlay) close(); };
+  overlay.querySelector('#cancelEditAttBtn').onclick = close;
+
+  overlay.querySelector('#saveEditAttBtn').onclick = async () => {
+    const checkIn = overlay.querySelector('#editCheckIn').value;
+    const checkOut = overlay.querySelector('#editCheckOut').value;
+    if(!checkIn){ showToast('Vui lòng nhập giờ vào.', 'error'); return; }
+    if(checkOut && checkOut <= checkIn){ showToast('Giờ ra phải sau giờ vào.', 'error'); return; }
+
+    const payload = { id, checkIn, checkOut };
+    if(!isFullTimeRecord){
+      const shiftStart = overlay.querySelector('#editShiftStart').value;
+      const shiftEnd = overlay.querySelector('#editShiftEnd').value;
+      if((shiftStart && !shiftEnd) || (!shiftStart && shiftEnd)){
+        showToast('Vui lòng nhập đủ cả giờ bắt đầu và kết thúc ca, hoặc để trống cả 2.', 'error'); return;
+      }
+      if(shiftStart && shiftEnd && shiftStart >= shiftEnd){
+        showToast('Giờ bắt đầu ca phải trước giờ kết thúc.', 'error'); return;
+      }
+      payload.shiftStart = shiftStart;
+      payload.shiftEnd = shiftEnd;
+    }
+
+    showBusy('Đang lưu...');
+    try{
+      const res = await apiCall('updateCheckInOut', payload);
+      Object.assign(rec, res);
+      renderChamCongHistoryList();
+      renderOvertimeSummary();
+      close();
+      showToast('Đã cập nhật bản ghi chấm công.', 'success');
+    } catch(err){
+      showToast('Không sửa được: ' + err.message, 'error');
+    } finally{
+      hideBusy();
+    }
+  };
 }
 
 // ---------- sắp xếp ca làm ----------
