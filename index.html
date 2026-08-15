@@ -1983,6 +1983,17 @@ function renderChamCongHistoryList(){
 // ---------- sắp xếp ca làm ----------
 let shiftWeekStart = null; // Date - luôn là Thứ 2 đầu tuần đang xem
 let employeeListCache = null;
+// State chỉnh sửa ca làm đang xem (Chủ) — key `${date}|${employeeId}` -> mảng [{start,end}] (1 hoặc 2
+// phần tử, giờ tự do theo từng ngày, thay cho chọn Sáng/Chiều/Cả 2 ca cố định trước đây). Nạp lại từ
+// server mỗi lần đổi tuần/tải lại; chỉ thực sự ghi lên server khi bấm "Lưu ca làm tuần này".
+let shiftEditState = {};
+
+function escAttr_(s){ return String(s == null ? '' : s).replace(/&/g,'&amp;').replace(/"/g,'&quot;'); }
+
+function formatShiftCellText_(slots){
+  if(!slots || !slots.length) return '—';
+  return slots.map(s => `${s.start}-${s.end}`).join('<br>');
+}
 
 function mondayOf_(d){
   const day = d.getDay();
@@ -2057,32 +2068,34 @@ async function renderShiftWeek(rows, isOwner, fromDateStr){
   const days = [];
   for(let i=0;i<7;i++) days.push(addDays_(start, i));
 
-  const shiftMap = {};
-  rows.forEach(r => { shiftMap[r.date+'|'+r.employeeId] = r.shift; });
+  // Nạp lại state chỉnh sửa từ dữ liệu server mỗi lần render (đổi tuần/tải lại) — bỏ thay đổi dang dở
+  // chưa lưu, giống hành vi cũ (chọn xong phải bấm "Lưu ca làm tuần này" mới ghi lên server).
+  shiftEditState = {};
+  rows.forEach(r => { shiftEditState[r.date+'|'+r.employeeId] = Array.isArray(r.shifts) ? r.shifts : []; });
 
-  // Nhân viên xem CÙNG bảng lưới ngày × nhân viên như Chủ (chỉ đọc, không có <select>) —
+  // Nhân viên xem CÙNG bảng lưới ngày × nhân viên như Chủ (chỉ đọc, không bấm được) —
   // vẫn thấy được lịch của cả cửa hàng và có thể chuyển tuần trước/sau như bình thường.
   let html = '<table style="width:100%;border-collapse:collapse;font-size:11px;">';
   html += '<tr><th style="text-align:left;padding:4px 6px 4px 0;position:sticky;left:0;background:#fff;">NV</th>' +
-    days.map(d=>`<th style="padding:4px 2px;min-width:50px;font-weight:700;">${DAY_LABELS_[d.getDay()]}<br><span style="font-weight:400;color:var(--ink-soft);">${String(d.getDate()).padStart(2,'0')}/${String(d.getMonth()+1).padStart(2,'0')}</span></th>`).join('') + '</tr>';
+    days.map(d=>`<th style="padding:4px 2px;min-width:72px;font-weight:700;">${DAY_LABELS_[d.getDay()]}<br><span style="font-weight:400;color:var(--ink-soft);">${String(d.getDate()).padStart(2,'0')}/${String(d.getMonth()+1).padStart(2,'0')}</span></th>`).join('') + '</tr>';
   employees.forEach(emp => {
     const mine = !isOwner && currentUser && emp.name === currentUser.name;
     const rowBg = mine ? '#E4F3EC' : '#fff';
     html += `<tr${mine ? ' style="background:#E4F3EC;"' : ''}><td style="padding:4px 6px 4px 0;font-weight:700;position:sticky;left:0;background:${rowBg};white-space:nowrap;">${emp.name}${mine ? ' (bạn)' : ''}</td>`;
     days.forEach(d => {
       const dStr = fmtVN_(d);
-      const val = shiftMap[dStr+'|'+emp.employeeId] || '';
+      const key = dStr+'|'+emp.employeeId;
+      const slots = shiftEditState[key];
+      const cellText = formatShiftCellText_(slots);
+      const hasShift = !!(slots && slots.length);
       if(isOwner){
-        html += `<td style="padding:2px;">
-          <select data-emp="${emp.employeeId}" data-name="${emp.name}" data-date="${dStr}" style="width:100%;font-size:10px;padding:4px 1px;border-radius:6px;border:1px solid var(--border);background:#FBFDFC;">
-            <option value="" ${val===''?'selected':''}>—</option>
-            <option value="Sáng" ${val==='Sáng'?'selected':''}>Sáng</option>
-            <option value="Chiều" ${val==='Chiều'?'selected':''}>Chiều</option>
-            <option value="Cả 2 ca" ${val==='Cả 2 ca'?'selected':''}>2 ca</option>
-          </select>
+        html += `<td style="padding:2px;text-align:center;">
+          <button type="button" class="shift-cell-btn" data-date="${dStr}" data-emp="${emp.employeeId}" data-emp-name="${escAttr_(emp.name)}"
+            onclick="openShiftCellEditor(this)"
+            style="width:100%;font-size:9.5px;line-height:1.35;padding:6px 2px;border-radius:8px;border:1px solid var(--border);background:#FBFDFC;color:${hasShift?'var(--brand-dark)':'var(--ink-soft)'};font-weight:${hasShift?'700':'400'};cursor:pointer;">${cellText}</button>
         </td>`;
       } else {
-        html += `<td style="padding:6px 2px;text-align:center;font-size:10.5px;font-weight:${val?'700':'400'};color:${val?'var(--brand-dark)':'var(--ink-soft)'};">${val || '—'}</td>`;
+        html += `<td style="padding:6px 2px;text-align:center;font-size:9.5px;line-height:1.35;font-weight:${hasShift?'700':'400'};color:${hasShift?'var(--brand-dark)':'var(--ink-soft)'};">${cellText}</td>`;
       }
     });
     html += '</tr>';
@@ -2092,11 +2105,119 @@ async function renderShiftWeek(rows, isOwner, fromDateStr){
   saveBtn.style.display = isOwner ? 'block' : 'none';
 }
 
+// Mở bảng nhỏ (bottom sheet) để Chủ nhập giờ vào/giờ ra cho 1 ô (1 nhân viên × 1 ngày). Cho phép tới
+// 2 khoảng giờ tách biệt trong ngày (ví dụ làm sáng rồi tối, nghỉ giữa buổi) — bấm "+ Thêm ca 2 trong
+// ngày" mới hiện khối Ca 2. Đóng bảng bằng "Xong" (lưu vào state, chưa gửi server) hoặc "Xoá ca"
+// (xoá trắng ngày đó). Vẫn phải bấm "Lưu ca làm tuần này" ở cuối trang mới thực sự ghi lên server.
+function openShiftCellEditor(btnEl){
+  const dateStr = btnEl.dataset.date;
+  const employeeId = btnEl.dataset.emp;
+  const employeeName = btnEl.dataset.empName;
+  const dObj = parseVNDateJS_(dateStr);
+  const dayLabel = `${DAY_LABELS_[dObj.getDay()]}, ${dateStr}`;
+
+  const key = dateStr+'|'+employeeId;
+  const current = shiftEditState[key] || [];
+  const slot0 = current[0] || { start:'', end:'' };
+  const slot1 = current[1] || null;
+
+  const overlay = document.createElement('div');
+  overlay.className = 'confirm-overlay';
+  overlay.innerHTML = `
+    <div class="confirm-box" style="text-align:left;max-width:340px;">
+      <h3 style="margin:0 0 2px;font-size:15px;">${escAttr_(employeeName)}</h3>
+      <div style="font-size:12px;color:var(--ink-soft);margin-bottom:16px;">${dayLabel}</div>
+
+      <div style="margin-bottom:12px;">
+        <div style="font-size:12px;font-weight:700;margin-bottom:6px;">Ca 1</div>
+        <div style="display:flex;align-items:center;gap:8px;">
+          <input type="time" id="shiftSlot0Start" value="${slot0.start}" style="flex:1;min-width:0;padding:8px;border-radius:10px;border:1px solid var(--border);font-size:14px;">
+          <span>–</span>
+          <input type="time" id="shiftSlot0End" value="${slot0.end}" style="flex:1;min-width:0;padding:8px;border-radius:10px;border:1px solid var(--border);font-size:14px;">
+        </div>
+      </div>
+
+      <div id="shiftSlot1Wrap" style="margin-bottom:12px;${slot1 ? '' : 'display:none;'}">
+        <div style="font-size:12px;font-weight:700;margin-bottom:6px;display:flex;justify-content:space-between;align-items:center;">
+          <span>Ca 2</span>
+          <button type="button" id="removeSlot1Btn" style="border:none;background:none;color:var(--danger);font-size:11.5px;font-weight:700;cursor:pointer;padding:0;">Xoá ca 2</button>
+        </div>
+        <div style="display:flex;align-items:center;gap:8px;">
+          <input type="time" id="shiftSlot1Start" value="${slot1?slot1.start:''}" style="flex:1;min-width:0;padding:8px;border-radius:10px;border:1px solid var(--border);font-size:14px;">
+          <span>–</span>
+          <input type="time" id="shiftSlot1End" value="${slot1?slot1.end:''}" style="flex:1;min-width:0;padding:8px;border-radius:10px;border:1px solid var(--border);font-size:14px;">
+        </div>
+      </div>
+
+      <button type="button" id="addSlot1Btn" class="btn btn-ghost btn-sm btn-full" style="margin-bottom:16px;${slot1 ? 'display:none;' : ''}">+ Thêm ca 2 trong ngày</button>
+
+      <div class="row" style="display:flex;gap:10px;">
+        <button type="button" class="btn btn-ghost btn-full" id="clearShiftBtn">Xoá ca</button>
+        <button type="button" class="btn btn-in btn-full" id="doneShiftBtn">Xong</button>
+      </div>
+    </div>`;
+  document.body.appendChild(overlay);
+
+  const slot1Wrap = overlay.querySelector('#shiftSlot1Wrap');
+  const addBtn = overlay.querySelector('#addSlot1Btn');
+  addBtn.onclick = () => { slot1Wrap.style.display = ''; addBtn.style.display = 'none'; };
+  overlay.querySelector('#removeSlot1Btn').onclick = () => {
+    slot1Wrap.style.display = 'none';
+    addBtn.style.display = '';
+    overlay.querySelector('#shiftSlot1Start').value = '';
+    overlay.querySelector('#shiftSlot1End').value = '';
+  };
+
+  const close = () => overlay.remove();
+  overlay.onclick = (e) => { if(e.target === overlay) close(); };
+
+  overlay.querySelector('#clearShiftBtn').onclick = () => {
+    delete shiftEditState[key];
+    btnEl.innerHTML = '—';
+    btnEl.style.color = 'var(--ink-soft)';
+    btnEl.style.fontWeight = '400';
+    close();
+  };
+
+  overlay.querySelector('#doneShiftBtn').onclick = () => {
+    const s0start = overlay.querySelector('#shiftSlot0Start').value;
+    const s0end = overlay.querySelector('#shiftSlot0End').value;
+    const showingSlot1 = slot1Wrap.style.display !== 'none';
+    const s1start = showingSlot1 ? overlay.querySelector('#shiftSlot1Start').value : '';
+    const s1end = showingSlot1 ? overlay.querySelector('#shiftSlot1End').value : '';
+
+    if((s0start && !s0end) || (!s0start && s0end)){ showToast('Vui lòng nhập đủ giờ vào và giờ ra cho Ca 1.', 'error'); return; }
+    if(s0start && s0end && s0start >= s0end){ showToast('Giờ vào Ca 1 phải trước giờ ra.', 'error'); return; }
+    if(showingSlot1){
+      if((s1start && !s1end) || (!s1start && s1end)){ showToast('Vui lòng nhập đủ giờ vào và giờ ra cho Ca 2.', 'error'); return; }
+      if(s1start && s1end && s1start >= s1end){ showToast('Giờ vào Ca 2 phải trước giờ ra.', 'error'); return; }
+    }
+
+    const slots = [];
+    if(s0start && s0end) slots.push({ start:s0start, end:s0end });
+    if(showingSlot1 && s1start && s1end) slots.push({ start:s1start, end:s1end });
+    slots.sort((a,b) => a.start.localeCompare(b.start));
+
+    if(slots.length === 0){
+      delete shiftEditState[key];
+    } else {
+      shiftEditState[key] = slots;
+    }
+    btnEl.innerHTML = formatShiftCellText_(slots.length ? slots : null);
+    btnEl.style.color = slots.length ? 'var(--brand-dark)' : 'var(--ink-soft)';
+    btnEl.style.fontWeight = slots.length ? '700' : '400';
+    close();
+  };
+}
+
 async function saveShiftWeek(){
-  const selects = document.querySelectorAll('#shiftGridWrap select');
+  const cells = document.querySelectorAll('.shift-cell-btn');
   const assignments = [];
-  selects.forEach(sel => {
-    assignments.push({ date: sel.dataset.date, employeeId: sel.dataset.emp, employeeName: sel.dataset.name, shift: sel.value });
+  cells.forEach(btn => {
+    const dateStr = btn.dataset.date;
+    const employeeId = btn.dataset.emp;
+    const employeeName = btn.dataset.empName;
+    assignments.push({ date: dateStr, employeeId, employeeName, shifts: shiftEditState[dateStr+'|'+employeeId] || [] });
   });
   const resultEl = document.getElementById('shiftSaveResult');
   resultEl.textContent = '';
