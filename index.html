@@ -587,6 +587,7 @@
         </div>
         <div id="shiftGridWrap" style="margin-top:12px;overflow-x:auto;"></div>
         <button class="btn btn-in btn-full btn-sm" style="margin-top:10px;display:none;" id="saveShiftBtn" onclick="saveShiftWeek()">Lưu ca làm tuần này</button>
+        <button class="btn btn-ghost btn-full btn-sm" style="margin-top:8px;display:none;" id="syncAttendanceBtn" onclick="syncAttendanceWeek()">🔄 Đồng bộ giờ chấm công theo ca tuần này</button>
         <div id="shiftSaveResult" style="margin-top:8px;font-size:12.5px;color:var(--ink-soft);"></div>
       </div>
 
@@ -2144,11 +2145,13 @@ async function renderShiftWeek(rows, isOwner, fromDateStr){
   const employees = allEmployees.filter(e => (e.employeeType || 'Part time') !== 'Full time' && !e.isOwnerAccount);
   const gridWrap = document.getElementById('shiftGridWrap');
   const saveBtn = document.getElementById('saveShiftBtn');
+  const syncBtn = document.getElementById('syncAttendanceBtn');
   document.getElementById('shiftSectionTitle').textContent = isOwner ? 'Sắp xếp ca làm (Chủ)' : 'Ca làm tuần này';
 
   if(employees.length === 0){
     gridWrap.innerHTML = '<div class="empty-state">Chưa có danh sách nhân viên.</div>';
     saveBtn.style.display = 'none';
+    syncBtn.style.display = 'none';
     return;
   }
 
@@ -2191,6 +2194,7 @@ async function renderShiftWeek(rows, isOwner, fromDateStr){
   html += '</table>';
   gridWrap.innerHTML = html;
   saveBtn.style.display = isOwner ? 'block' : 'none';
+  syncBtn.style.display = isOwner ? 'block' : 'none';
 }
 
 // Mở bảng nhỏ (bottom sheet) để Chủ nhập giờ vào/giờ ra cho 1 ô (1 nhân viên × 1 ngày). Cho phép tới
@@ -2320,6 +2324,32 @@ async function saveShiftWeek(){
   }
 }
 
+
+
+async function syncAttendanceWeek(){
+  if(!shiftWeekStart) shiftWeekStart = mondayOf_(new Date());
+  const from = fmtVN_(shiftWeekStart);
+  const to = fmtVN_(addDays_(shiftWeekStart, 6));
+  const resultEl = document.getElementById('shiftSaveResult');
+  resultEl.textContent = '';
+  showBusy('Đang đồng bộ lại chấm công...');
+  try{
+    const r = await apiCall('recalculateAttendance', { from, to });
+    if(r.changed === 0){
+      resultEl.textContent = `Đã kiểm tra ${r.checked} bản ghi chấm công tuần này — không có gì cần cập nhật.`;
+    } else {
+      const lines = r.changes.slice(0, 20).map(c => `${c.date} · ${c.employeeName}: ${c.oldTotalHours}h → ${c.newTotalHours}h`).join('\n');
+      resultEl.innerHTML = `Đã cập nhật ${r.changed}/${r.checked} bản ghi chấm công theo ca mới:<br><span style="white-space:pre-line;font-size:11.5px;">${lines}</span>${r.changes.length > 20 ? `<br>… và ${r.changes.length - 20} bản ghi khác.` : ''}`;
+    }
+    if(typeof loadCheckInHistory === 'function' && document.getElementById('chamCongHistoryFrom') && document.getElementById('chamCongHistoryFrom').value){
+      loadCheckInHistory();
+    }
+  } catch(err){
+    resultEl.textContent = 'Lỗi: ' + err.message;
+  } finally{
+    hideBusy();
+  }
+}
 // ---------- đóng gói đồ ----------
 let editingPackageId = null;
 let lastPackageRows = [];
