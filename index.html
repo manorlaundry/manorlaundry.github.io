@@ -1500,6 +1500,10 @@ function exportChamCongCSV(){
   downloadCSV_(`ChamCong_${fromIso}_${toIso}.csv`, headers, rows);
 }
 
+// Xuất file lương: phần khoản cộng/trừ chỉ hiện dòng nào Chủ CÓ điền (giá trị > 0) — đúng quy tắc đã
+// dùng khi gửi email lương (xem handleSendPayrollEmail), để khỏi hiện các dòng "0đ" gây rối khi xem
+// file. Đính kèm luôn lịch sử chấm công chi tiết từng ngày trong kỳ lương này (cùng dữ liệu đang hiện
+// ở khối "Nhật ký chấm công" trên màn hình) để không cần xuất riêng ở tab Chấm công nữa.
 function exportPayrollCSV(){
   if(!payrollDetail){
     showToast('Vui lòng bấm "Xem chấm công & tính lương" trước.');
@@ -1514,17 +1518,25 @@ function exportPayrollCSV(){
     ['Giờ chính thức', p.regularHours],
     ['Giờ tăng ca đã duyệt', p.otHours],
     ['Hệ số lương tăng ca', p.otMultiplier],
-    ['Lương cơ bản (giờ chính thức)', p.basePay],
-    ['Thưởng hiệu suất', p.bonusPerformance],
-    ['Làm thêm giờ', p.overtimePay],
-    ['Hỗ trợ xăng ship đơn', p.gasAllowance],
-    ['Phụ cấp ăn trưa', p.lunchAllowance],
-    ['Lương trách nhiệm', p.responsibilityAllowance],
-    ['Nghỉ không lương', -p.unpaidLeave],
-    ['Tạm ứng', -p.advance],
-    ['Đi làm muộn', -p.latePenalty],
-    ['Tổng thực nhận', p.totalPay]
+    ['Lương cơ bản (giờ chính thức)', p.basePay]
   ];
+  if(p.bonusPerformance > 0) rows.push(['Thưởng hiệu suất', p.bonusPerformance]);
+  if(p.overtimePay > 0) rows.push(['Làm thêm giờ', p.overtimePay]);
+  if(p.gasAllowance > 0) rows.push(['Hỗ trợ xăng ship đơn', p.gasAllowance]);
+  if(p.lunchAllowance > 0) rows.push(['Phụ cấp ăn trưa', p.lunchAllowance]);
+  if(p.responsibilityAllowance > 0) rows.push(['Lương trách nhiệm', p.responsibilityAllowance]);
+  if(p.unpaidLeave > 0) rows.push(['Nghỉ không lương', -p.unpaidLeave]);
+  if(p.advance > 0) rows.push(['Tạm ứng', -p.advance]);
+  if(p.latePenalty > 0) rows.push(['Đi làm muộn', -p.latePenalty]);
+  rows.push(['Tổng thực nhận', p.totalPay]);
+
+  rows.push([]);
+  rows.push(['Nhật ký chấm công']);
+  rows.push(['Ngày','Nhân viên','Ca','Giờ vào','Giờ ra','Tổng giờ','Phút đi muộn','Phút tăng ca','Tăng ca đã duyệt']);
+  (p.records || []).forEach(r => {
+    rows.push([r.date, p.employeeName, r.ca || '', r.checkIn || '', r.checkOut || '', r.totalHours || 0, r.lateMinutes || 0, r.overtimeMinutes || 0, r.overtimeApproved ? 'Có' : 'Không']);
+  });
+
   downloadCSV_(`Luong_${p.employeeName}_${p.from.replace(/\//g,'-')}_${p.to.replace(/\//g,'-')}.csv`, headers, rows);
 }
 
